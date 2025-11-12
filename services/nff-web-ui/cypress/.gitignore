@@ -1,0 +1,14 @@
+# Cypress generated files
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+# Cypress cache
+.cypress/
+
+# Test results
+cypress/results/
+
+# Temporary files
+*.tmp
+*.temp

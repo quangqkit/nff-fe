@@ -1,0 +1,432 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  reports   Report[]
+}
+
+model ReportType {
+  id                Int                      @id @default(autoincrement())
+  name              String                   @unique
+  description       String?
+  templateConfig    Json?
+  isActive          Boolean                  @default(true)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  defaultIndicators IndicatorReportDefault[]
+  reports           Report[]
+}
+
+model ChartCategory {
+  id          Int                 @id @default(autoincrement())
+  name        String              @unique
+  description String?
+  icon        String?
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  indicators  IndicatorMetadata[]
+}
+
+model IndicatorMetadata {
+  id                    Int                      @id @default(autoincrement())
+  moduleEN              String                   @db.VarChar(100)
+  moduleHE              String?                  @db.VarChar(100)
+  indicatorEN           String                   @db.VarChar(200)
+  indicatorHE           String?                  @db.VarChar(200)
+  categoryId            Int
+  source                String                   @db.VarChar(50)
+  seriesIDs             String?
+  apiExample            String?
+  calculation           String?
+  notes                 String?
+  importance            Int                      @default(3)
+  relevantReports       String[]                 @default([])
+  defaultChartType      String                   @default("line") @db.VarChar(255)
+  etlStatus             ETLStatus                @default(UNKNOWN)
+  etlStatusCode         String?                  @db.VarChar(50)
+  etlNotes              String?
+  lastEtlRunAt          DateTime?
+  lastSuccessfulAt      DateTime?
+  recordsCount          Int                      @default(0)
+  isActive              Boolean                  @default(true)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  etlLogs               IndicatorETLLog[]
+  category              ChartCategory            @relation(fields: [categoryId], references: [id])
+  defaultReportMappings IndicatorReportDefault[]
+  timeSeries            IndicatorTimeSeries[]
+
+  @@unique([indicatorEN, categoryId])
+  @@index([categoryId])
+  @@index([etlStatus])
+  @@index([importance])
+  @@index([source])
+}
+
+model IndicatorTimeSeries {
+  id                  Int               @id @default(autoincrement())
+  indicatorMetadataId Int
+  date                DateTime          @db.Date
+  value               Decimal?          @db.Decimal(15, 6)
+  zScore              Decimal?          @db.Decimal(8, 4)
+  normalized          Decimal?          @db.Decimal(8, 6)
+  pctChange1m         Decimal?          @db.Decimal(10, 4)
+  pctChange3m         Decimal?          @db.Decimal(10, 4)
+  pctChange12m        Decimal?          @db.Decimal(10, 4)
+  ma30d               Decimal?          @db.Decimal(15, 6)
+  ma90d               Decimal?          @db.Decimal(15, 6)
+  ma365d              Decimal?          @db.Decimal(15, 6)
+  volatility30d       Decimal?          @db.Decimal(15, 6)
+  volatility90d       Decimal?          @db.Decimal(15, 6)
+  lag1                Decimal?          @db.Decimal(15, 6)
+  lag3                Decimal?          @db.Decimal(15, 6)
+  lag6                Decimal?          @db.Decimal(15, 6)
+  lag12               Decimal?          @db.Decimal(15, 6)
+  trend               String?           @db.VarChar(10)
+  isOutlier           Boolean?          @default(false)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  originalValue       Decimal?          @db.Decimal(15, 6)
+  calculatedValue     Decimal?          @db.Decimal(15, 6)
+  hasCalculation      Boolean           @default(false)
+  indicatorMetadata   IndicatorMetadata @relation(fields: [indicatorMetadataId], references: [id], onDelete: Cascade)
+
+  @@unique([indicatorMetadataId, date])
+  @@index([indicatorMetadataId, date])
+  @@index([date])
+  @@index([hasCalculation])
+}
+
+model IndicatorReportDefault {
+  id           Int               @id @default(autoincrement())
+  indicatorId  Int
+  reportTypeId Int
+  isDefault    Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  indicator    IndicatorMetadata @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  reportType   ReportType        @relation(fields: [reportTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([indicatorId, reportTypeId])
+  @@index([reportTypeId, isDefault])
+}
+
+model IndicatorETLLog {
+  id               Int               @id @default(autoincrement())
+  indicatorId      Int
+  jobId            String            @db.VarChar(100)
+  status           ETLStatus
+  errorCode        String?           @db.VarChar(50)
+  errorMessage     String?
+  errorCategory    String?           @db.VarChar(50)
+  recordsProcessed Int               @default(0)
+  recordsInserted  Int               @default(0)
+  recordsUpdated   Int               @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  metadata         Json?
+  indicator        IndicatorMetadata @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+
+  @@index([indicatorId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ETLJob {
+  jobId           String       @id @db.VarChar(50)
+  status          ETLJobStatus
+  totalIndicators Int
+  successful      Int          @default(0)
+  failed          Int          @default(0)
+  blocked         Int          @default(0)
+  startedAt       DateTime
+  completedAt     DateTime?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Report {
+  id           Int             @id @default(autoincrement())
+  title        String
+  reportTypeId Int
+  status       String          @default("draft")
+  authorId     Int
+  metadata     Json?
+  summary      String?
+  tags         String[]
+  isArchived   Boolean         @default(false)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  author       User            @relation(fields: [authorId], references: [id])
+  reportType   ReportType      @relation(fields: [reportTypeId], references: [id])
+  exports      ReportExport[]
+  sections     ReportSection[]
+  shares       ReportShare[]
+
+  @@index([title], map: "idx_reports_title_search")
+  @@index([status], map: "idx_reports_status")
+  @@index([createdAt], map: "idx_reports_created_at")
+  @@index([updatedAt], map: "idx_reports_updated_at")
+  @@index([isArchived], map: "idx_reports_archived")
+}
+
+model ReportSection {
+  id         Int           @id @default(autoincrement())
+  reportId   Int
+  title      String
+  isEnabled  Boolean       @default(true)
+  orderIndex Int
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  blocks     ReportBlock[]
+  report     Report        @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, orderIndex])
+}
+
+model ReportBlock {
+  id         Int           @id @default(autoincrement())
+  sectionId  Int
+  name       String
+  type       BlockType
+  content    Json
+  columns    Int           @default(12)
+  orderIndex Int
+  isEnabled  Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  section    ReportSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  indicatorConfigs IndicatorConfig[]
+
+  @@index([sectionId, orderIndex])
+}
+
+model ReportExport {
+  id           Int       @id @default(autoincrement())
+  reportId     Int
+  exportType   String
+  filePath     String?
+  exportConfig Json?
+  status       String    @default("pending")
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+  downloadUrl  String?
+  expiresAt    DateTime?
+  fileSize     Int?
+  metadata     Json?
+  report       Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([exportType, status])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+model ReportShare {
+  id         String    @id @default(cuid())
+  reportId   Int
+  email      String
+  permission String    @default("view")
+  message    String?
+  shareUrl   String    @unique
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  report     Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([email], map: "idx_report_shares_email")
+  @@index([shareUrl], map: "idx_report_shares_url")
+  @@index([expiresAt], map: "idx_report_shares_expires")
+}
+
+
+enum BlockType {
+  TEXT
+  CHART
+  TABLE
+  BULLETS
+  NOTES
+}
+
+enum ETLStatus {
+  UNKNOWN
+  PENDING
+  PROCESSING
+  OK
+  ERROR
+  BLOCKED
+  STALE
+}
+
+model IndicatorConfig {
+  id               Int      @id @default(autoincrement())
+  indicatorId      String   @db.VarChar(100)
+  blockId          Int?
+  chartType        String   @default("line") @db.VarChar(50)
+  dateRangeStart   DateTime
+  dateRangeEnd     DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  reportBlock      ReportBlock? @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@unique([indicatorId, blockId])
+  @@index([indicatorId])
+  @@index([blockId])
+}
+
+enum ETLJobStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// Lobstr Integration Models
+model LobstrSchedule {
+  id                Int       @id @default(autoincrement())
+  scheduleId        String    @unique // Lobstr schedule ID
+  name              String
+  description       String?
+  isActive          Boolean   @default(true)
+  cronExpression    String?   // Cron expression for scheduling
+  timezone          String    @default("Asia/Jerusalem")
+  lookbackHours     Int       @default(4) // Hours to look back
+  keywords          String[]  @default([]) // Keywords to filter tweets
+  accounts          String[]  @default([]) // Twitter accounts to monitor
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  runs              LobstrRun[]
+
+  @@index([scheduleId])
+  @@index([isActive])
+}
+
+model LobstrRun {
+  id                Int       @id @default(autoincrement())
+  scheduleId        Int
+  runId             String    @unique // Unique run identifier
+  runType           String    @default("auto") // auto | manual
+  status            String    @default("pending") // pending | running | completed | failed
+  windowStart       DateTime
+  windowEnd         DateTime
+  tweetsFetched     Int       @default(0)
+  tweetsProcessed   Int       @default(0)
+  tweetsDropped     Int       @default(0)
+  errors            Json?     // Error details
+  metadata          Json?     // Additional run metadata
+  startedAt         DateTime?
+  completedAt       DateTime?
+  durationMs        Int?      // Duration in milliseconds
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  schedule          LobstrSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@index([status])
+  @@index([windowStart, windowEnd])
+  @@index([runType])
+}
+
+model TweetRaw {
+  id                Int       @id @default(autoincrement())
+  scheduleId        String    // Lobstr schedule ID (not internal DB ID)
+  runId             String    // Lobstr run ID (not internal DB ID)
+  tweetId           String    @unique // Twitter tweet ID
+  externalId        String?   // External reference ID
+  source            String    @default("lobstr")
+  authorId          String?   // Twitter author ID
+  authorHandle      String?   // Twitter handle
+  text              String
+  lang              String?   @default("en") // Changed from 'language' to 'lang'
+  createdAt         DateTime  // Tweet creation time
+  fetchedAt         DateTime  @default(now()) // When we fetched it
+  isReply           Boolean   @default(false)
+  isRetweet         Boolean   @default(false)
+  publicMetrics     Json?     // Likes, retweets, replies count
+  urls              Json?     // URLs in the tweet
+  symbols           String[]  @default([]) // Stock symbols mentioned
+
+  @@index([tweetId])
+  @@index([scheduleId])
+  @@index([runId])
+  @@index([createdAt])
+  @@index([lang])
+  @@index([isReply, isRetweet])
+  @@index([symbols])
+  @@unique([source, externalId])
+}
+
+model TweetEnrichment {
+  id                Int       @id @default(autoincrement())
+  tweetId           String    @unique // FK to TweetRaw.tweetId
+  aiSummary         String?   // AI-generated summary
+  aiLabels          String[]  @default([]) // AI-generated labels/tags
+  aiConfidence      Decimal?  @db.Decimal(5, 4) // Confidence score 0-1
+  sentiment         String?   @db.VarChar(20) // positive, negative, neutral
+  topic             String?   @db.VarChar(100) // Main topic/category
+  tickerCandidates  String[]  @default([]) // Potential stock tickers
+  moverFlag         Boolean   @default(false) // Market mover flag
+  reasonTypes       String[]  @default([]) // Earnings, AnalystRating, etc.
+  processedAt       DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tweetId])
+  @@index([moverFlag])
+  @@index([reasonTypes])
+  @@index([sentiment])
+  @@index([processedAt])
+}
+
+model Catalyst {
+  id                    Int       @id @default(autoincrement())
+  title                 String
+  summary               String
+  ticker                String    @db.VarChar(20)
+  reasonTypes           String[]  @default([])
+  mergedFromTweetsIds   String[]  @default([])
+  tweetLinks            Json?     // Tweet links with metadata
+  confidence            Decimal   @db.Decimal(5, 4)
+  tweetCount            Int       @default(0)
+  timeWindow            DateTime
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([ticker])
+  @@index([reasonTypes])
+  @@index([timeWindow])
+  @@index([confidence])
+}
+
+// TradingView Integration Models
+model TradingViewStock {
+  id                        Int       @id @default(autoincrement())
+  symbol                    String    @db.VarChar(20)
+  companyName               String    @db.VarChar(200)
+  preMarketChangePercent    String?   @db.VarChar(20)
+  marketCap                 String?   @db.VarChar(50)
+  source                    String    @default("tradingview") @db.VarChar(50)
+  dataType                  String    @db.VarChar(20) // 'gainers' hoặc 'losers'
+  fetchTime                 DateTime  @default(now()) // Thời gian fetch data
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([symbol])
+  @@index([dataType])
+  @@index([fetchTime])
+  @@index([createdAt])
+}

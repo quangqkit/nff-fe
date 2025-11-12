@@ -1,0 +1,9 @@
+[build]
+  base = "services/nff-web-ui"
+  command = "pnpm build"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NPM_FLAGS = "--legacy-peer-deps"

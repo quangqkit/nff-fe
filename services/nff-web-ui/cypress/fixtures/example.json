@@ -1,0 +1,12 @@
+{
+  "user": {
+    "email": "test@example.com",
+    "password": "password123",
+    "name": "Test User"
+  },
+  "testData": {
+    "title": "Test Title",
+    "description": "Test Description",
+    "tags": ["test", "example"]
+  }
+}
