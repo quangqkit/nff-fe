@@ -197,8 +197,7 @@ export class TweetClassificationService {
     await this.prisma.tweet.update({
       where: { tweetId },
       data: {
-        tickers: [],
-        sectors: [],
+        category: normalizedCategory,
         updatedAt: new Date(),
       },
     });

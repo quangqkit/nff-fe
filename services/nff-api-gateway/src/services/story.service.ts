@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { StoryType, StoryStatus } from '@prisma/client';
 
@@ -10,6 +10,8 @@ export interface StoryGroupingResult {
 
 @Injectable()
 export class StoryService {
+  private readonly logger = new Logger(StoryService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async groupTweetsIntoStories(
@@ -33,6 +35,7 @@ export class StoryService {
       where: whereClause,
       select: {
         tweetId: true,
+        category: true,
         tickers: true,
         sectors: true,
       },
@@ -72,7 +75,7 @@ export class StoryService {
           }
           const group = tickerGroups.get(tickerKey)!;
           group.tweets.add(tweet.tweetId);
-          group.categories.add(tweet.tickers.join(','));
+          group.categories.add(tweet.category);
         }
         processedTweetIds.add(tweet.tweetId);
       } else if (hasSectors) {
@@ -88,7 +91,7 @@ export class StoryService {
           }
           const group = sectorGroups.get(sectorKey)!;
           group.tweets.add(tweet.tweetId);
-          group.categories.add(tweet.sectors.join(','));
+          group.categories.add(tweet.category);
         }
         processedTweetIds.add(tweet.tweetId);
       }
@@ -285,11 +288,7 @@ export class StoryService {
     }
 
     const updatedCategories = Array.from(
-      new Set([
-        ...story.categories,
-        tweet.tickers.join(','),
-        tweet.sectors.join(','),
-      ]),
+      new Set([...story.categories, tweet.category]),
     );
     await this.prisma.story.update({
       where: { id: storyId },
@@ -337,12 +336,7 @@ export class StoryService {
           });
 
     const categories = Array.from(
-      new Set(
-        items.map(
-          (item) =>
-            item.tweet.tickers.join(',') + ',' + item.tweet.sectors.join(','),
-        ),
-      ),
+      new Set(items.map((item) => item.tweet.category)),
     );
 
     await this.prisma.story.update({

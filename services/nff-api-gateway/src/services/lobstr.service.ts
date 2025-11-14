@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from './prisma.service';
+import { Prisma } from '@prisma/client';
 import {
   LobstrRunResponse,
   LobstrRunsListResponse,
@@ -12,7 +13,6 @@ import {
   LobstrAddTasksResponse,
   LobstrGetTasksResponse,
   LobstrTask,
-  LobstrSquidDetailsResponse,
 } from '../types/lobstr.interface';
 import { TriggerRunDto } from '../dto/trigger-run.dto';
 import { LobstrRetryContext } from '../types/lobstr.interface';
@@ -393,81 +393,6 @@ export class LobstrService {
       );
       throw new HttpException(
         `Failed to delete all tasks: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  async getSchedule(scheduleId: string): Promise<LobstrSquidDetailsResponse> {
-    try {
-      const baseUrl = this.baseUrl.endsWith('/v1')
-        ? this.baseUrl
-        : `${this.baseUrl}/v1`;
-      const fullUrl = `${baseUrl}/squids/${scheduleId}`;
-
-      const headers = {
-        Authorization: `Token ${this.apiKey}`,
-      };
-
-      const response = await firstValueFrom(
-        this.httpService.get<LobstrSquidDetailsResponse>(fullUrl, {
-          headers,
-        }),
-      );
-
-      return response.data;
-    } catch (error) {
-      this.logger.error(
-        `Failed to get schedule: ${error.message}`,
-        error.stack,
-      );
-      throw new HttpException(
-        `Failed to get schedule: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  async setScheduleStatus(
-    scheduleId: string,
-    isActive: boolean,
-  ): Promise<LobstrSquidDetailsResponse> {
-    try {
-      const baseUrl = this.baseUrl.endsWith('/v1')
-        ? this.baseUrl
-        : `${this.baseUrl}/v1`;
-      const fullUrl = `${baseUrl}/squids/${scheduleId}`;
-
-      const headers = {
-        Authorization: `Token ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      };
-
-      const requestBody = {
-        is_active: isActive,
-      };
-
-      const response = await firstValueFrom(
-        this.httpService.patch<LobstrSquidDetailsResponse>(
-          fullUrl,
-          requestBody,
-          {
-            headers,
-          },
-        ),
-      );
-
-      this.logger.log(
-        `Schedule ${scheduleId} status updated to ${isActive ? 'active' : 'inactive'}`,
-      );
-      return response.data;
-    } catch (error) {
-      this.logger.error(
-        `Failed to set schedule status: ${error.message}`,
-        error.stack,
-      );
-      throw new HttpException(
-        `Failed to set schedule status: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
