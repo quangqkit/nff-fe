@@ -14,6 +14,7 @@ import { WindowScheduleService } from '../services/window-schedule.service';
 import { UpdateWindowScheduleStatusDto } from '../dto/update-window-schedule-status.dto';
 import { TweetClassificationService } from '../services/tweet-classification.service';
 import { ClassifyTweetsDto } from '../dto/classify-tweets.dto';
+import { UpdateScheduleStatusDto } from 'src/dto/update-schedule-status.dto';
 
 @Controller('lobstr')
 export class LobstrController {
@@ -45,7 +46,7 @@ export class LobstrController {
 
   @Get('schedules/:scheduleId')
   async getSchedule(@Param('scheduleId') scheduleId: string) {
-    return this.lobstrService.getSchedule(scheduleId);
+    return this.windowScheduleService.getWindowSchedule(scheduleId);
   }
 
   @Patch('schedules/:scheduleId/status')
@@ -53,8 +54,8 @@ export class LobstrController {
     @Param('scheduleId') scheduleId: string,
     @Body() updateScheduleStatusDto: UpdateScheduleStatusDto,
   ) {
-    return this.lobstrService.setScheduleStatus(
-      scheduleId,
+    return this.windowScheduleService.setWindowScheduleStatus(
+      Number.parseInt(scheduleId, 10),
       updateScheduleStatusDto.isActive,
     );
   }
