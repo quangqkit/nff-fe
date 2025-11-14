@@ -300,3 +300,38 @@ export interface LobstrGetTasksResponse {
   page: number;
   total_pages: number;
 }
+
+export type WindowScheduleDefinition = {
+  windowTime: string;
+  name?: string;
+  lobstrScheduleIds: string[];
+  timeZone?: string;
+  lookbackHours?: number;
+};
+
+export type WindowScheduleRecord = {
+  id: number;
+  windowTime: string;
+  name: string | null;
+  isActive: boolean;
+  timeZone: string;
+  lookbackHours: number;
+  lobstrScheduleIds: string[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type WindowScheduleWithRelations = {
+  id: number;
+  windowTime: string;
+  name: string | null;
+  isActive: boolean;
+  timezone: string;
+  lookbackHours: number;
+  createdAt: Date;
+  updatedAt: Date;
+  lobstrSchedules: {
+    scheduleId: string;
+    isActive: boolean;
+  }[];
+};

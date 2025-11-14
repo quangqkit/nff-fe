@@ -410,6 +410,7 @@ class IndicatorMetadataService:
             raise
     
     async def upsert_indicator_metadata(self, indicator_data: Dict[str, Any]) -> Any:
+        conn = None
         try:
             conn = psycopg2.connect(self.db_url)
             
@@ -497,12 +498,18 @@ class IndicatorMetadataService:
                 
         except Exception as e:
             logger.error(f"Error upserting indicator {indicator_data.get('indicatorEN')}: {e}")
-            if 'conn' in locals():
-                conn.rollback()
+            if conn:
+                try:
+                    conn.rollback()
+                except:
+                    pass
             raise
         finally:
-            if 'conn' in locals():
-                conn.close()
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
     
     async def get_report_type_by_name(self, report_name: str) -> Optional[Any]:
         try:

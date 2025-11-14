@@ -3,7 +3,7 @@ import * as puppeteer from 'puppeteer';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { SupabaseStorageService } from './supabase-storage.service';
+import { VercelBlobStorageService } from './vercel-blob-storage.service';
 
 export interface ChartImageResult {
   filePath: string;
@@ -126,7 +126,7 @@ export class ChartImageService {
     process.env.EXPORT_STORAGE_PATH || path.join(process.cwd(), 'exports');
   private browser: puppeteer.Browser | null = null;
 
-  constructor(private readonly supabaseStorage: SupabaseStorageService) {}
+  constructor(private readonly blobStorage: VercelBlobStorageService) {}
 
   async generateChartImage(
     chartData: ChartData,
@@ -208,13 +208,12 @@ export class ChartImageService {
       let storageUrl: string | undefined;
       let storageKey: string | undefined;
 
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+      const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
 
-      if (supabaseUrl && supabaseKey) {
+      if (blobToken) {
         try {
           const chartId = `chart_${uuidv4()}`;
-          const uploadResult = await this.supabaseStorage.uploadChartImage(
+          const uploadResult = await this.blobStorage.uploadChartImage(
             imageFilePath,
             chartId,
             {
@@ -226,7 +225,9 @@ export class ChartImageService {
           storageUrl = uploadResult.url;
           storageKey = uploadResult.key;
 
-          this.logger.log(`Chart image uploaded to Supabase: ${storageKey} -> ${storageUrl}`);
+          this.logger.log(
+            `Chart image uploaded to Vercel Blob: ${storageKey} -> ${storageUrl}`,
+          );
 
           if (process.env.CLEANUP_LOCAL_FILES === 'true') {
             await fs.remove(imageFilePath);
@@ -234,7 +235,7 @@ export class ChartImageService {
           }
         } catch (storageError) {
           this.logger.warn(
-            `Failed to upload chart image to Supabase: ${storageError.message}`,
+            `Failed to upload chart image to Vercel Blob: ${storageError.message}`,
           );
         }
       }

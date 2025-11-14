@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { IndicatorTimeSeriesService } from '../services/indicator-time-series.service';
 
 @ApiTags('Indicator Time Series')
-@Controller('api/indicator-time-series')
+@Controller('indicator-time-series')
 export class IndicatorTimeSeriesController {
   constructor(
     private readonly indicatorTimeSeriesService: IndicatorTimeSeriesService,

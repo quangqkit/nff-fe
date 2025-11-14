@@ -12,9 +12,35 @@ import {
 } from "@/components/ui/select";
 import type { RawTweetsFilters } from "@/types/tweets";
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type RawTweetsFiltersState = RawTweetsFilters;
+
+const cloneFilters = (
+  filters: RawTweetsFiltersState
+): RawTweetsFiltersState => {
+  const next: RawTweetsFiltersState = { ...filters };
+
+  if (filters.categories) {
+    next.categories = [...filters.categories];
+  }
+
+  if (filters.dateRange) {
+    next.dateRange = { ...filters.dateRange };
+  }
+
+  return next;
+};
+
+const hasActiveFilters = (filters: RawTweetsFiltersState) =>
+  Boolean(
+    filters.name ||
+      filters.ticker ||
+      filters.schedule ||
+      filters.dateRange?.from ||
+      filters.dateRange?.to ||
+      (filters.categories && filters.categories.length > 0)
+  );
 
 interface RawTweetsFiltersProps {
   initial?: RawTweetsFiltersState;
@@ -32,6 +58,14 @@ export function RawTweetsFilters({
   availableSchedules = [],
 }: RawTweetsFiltersProps) {
   const [filters, setFilters] = useState<RawTweetsFiltersState>(initial || {});
+  const [lastAppliedSerialized, setLastAppliedSerialized] = useState<string>(
+    () => JSON.stringify(initial ?? {})
+  );
+
+  useEffect(() => {
+    setFilters(initial || {});
+    setLastAppliedSerialized(JSON.stringify(initial ?? {}));
+  }, [initial]);
 
   const categoryOptions = useMemo(
     () =>
@@ -64,15 +98,40 @@ export function RawTweetsFilters({
     [availableTickers]
   );
 
-  const apply = () => onChange(filters);
+  const serializedCurrent = useMemo(
+    () => JSON.stringify(filters ?? {}),
+    [filters]
+  );
+  const hasChanges = serializedCurrent !== lastAppliedSerialized;
+
+  const selectedSchedule = useMemo(() => {
+    if (!filters.schedule) {
+      return undefined;
+    }
+    return scheduleOptions.find((option) => option.value === filters.schedule);
+  }, [filters.schedule, scheduleOptions]);
+
+  const handleApply = () => {
+    if (!hasChanges) {
+      return;
+    }
+    const payload = cloneFilters(filters);
+    setLastAppliedSerialized(JSON.stringify(payload));
+    onChange(payload);
+  };
+
   const reset = () => {
+    if (!hasActiveFilters(filters)) {
+      return;
+    }
     const cleared: RawTweetsFiltersState = {};
     setFilters(cleared);
+    setLastAppliedSerialized(JSON.stringify(cleared));
     onChange(cleared);
   };
 
   return (
-    <div className="w-full border border-border rounded-lg p-3 md:p-4 bg-muted/30">
+    <div className="w-full border border-border rounded-xl p-4 md:p-5 bg-white/50 dark:bg-muted/20 shadow-sm">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
         {/* Row 1 */}
         <div className="md:col-span-2">
@@ -104,6 +163,14 @@ export function RawTweetsFilters({
               onChange={(e) =>
                 setFilters((s) => ({ ...s, name: e.target.value }))
               }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (hasChanges) {
+                    handleApply();
+                  }
+                }
+              }}
               className="h-10 pl-9"
             />
           </div>
@@ -142,10 +209,15 @@ export function RawTweetsFilters({
             variant="ghost"
             className="h-10 w-full md:w-auto"
             onClick={reset}
+            disabled={!hasActiveFilters(filters)}
           >
             Reset
           </Button>
-          <Button className="h-10 w-full md:w-auto" onClick={apply}>
+          <Button
+            className="h-10 w-full md:w-auto"
+            onClick={handleApply}
+            disabled={!hasChanges}
+          >
             Apply
           </Button>
         </div>
@@ -171,24 +243,40 @@ export function RawTweetsFilters({
           </Select>
         </div>
 
-        <div className="md:col-span-2">
+        <div className="md:col-span-4 flex flex-col gap-1.5">
           <Select
             value={filters.schedule ?? ""}
-            onValueChange={(v) =>
-              setFilters((s) => ({ ...s, schedule: v || undefined }))
+            onValueChange={(value) =>
+              setFilters((state) => ({
+                ...state,
+                schedule: value || undefined,
+              }))
             }
           >
             <SelectTrigger className="h-10">
               <SelectValue placeholder="Choose window/schedule" />
             </SelectTrigger>
             <SelectContent>
-              {scheduleOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
+              {scheduleOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {selectedSchedule && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                Schedule ID:
+              </span>
+              <span className="font-medium text-foreground">
+                {filters.schedule}
+              </span>
+              <span className="hidden md:inline text-muted-foreground/80">
+                {selectedSchedule.label}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

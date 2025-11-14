@@ -126,18 +126,22 @@ export class JobManagementService {
       where.status = query.status;
     }
     if (query.search) {
-      where.OR = [
-        {
-          indicatorId: isNaN(parseInt(query.search))
-            ? undefined
-            : parseInt(query.search),
+      const searchNum = parseInt(query.search);
+      const orConditions: any[] = [];
+
+      orConditions.push({
+        indicator: {
+          indicatorEN: { contains: query.search, mode: 'insensitive' },
         },
-        {
-          indicator: {
-            indicatorEN: { contains: query.search, mode: 'insensitive' },
-          },
-        },
-      ].filter(Boolean);
+      });
+
+      if (!isNaN(searchNum)) {
+        orConditions.push({
+          indicatorId: searchNum,
+        });
+      }
+
+      where.OR = orConditions;
     }
     if (query.startDate || query.endDate) {
       where.createdAt = {};
@@ -150,6 +154,11 @@ export class JobManagementService {
         where.createdAt.lte = endDateTime;
       }
     }
+
+    // Log the where clause for debugging
+    this.logger.log(
+      `[DEBUG] IndicatorETLLog query where clause: ${JSON.stringify(where, null, 2)}`,
+    );
 
     const [logs, total] = await Promise.all([
       this.prisma.indicatorETLLog.findMany({
@@ -179,11 +188,23 @@ export class JobManagementService {
       this.prisma.indicatorETLLog.count({ where }),
     ]);
 
-    const mappedLogs = logs.map((log) => ({
+    this.logger.log(
+      `[DEBUG] IndicatorETLLog query result: Found ${logs.length} logs, Total=${total}`,
+    );
+
+    const validLogs = logs.filter((log) => log.indicator !== null);
+
+    if (validLogs.length !== logs.length) {
+      this.logger.warn(
+        `[DEBUG] Found ${logs.length - validLogs.length} orphaned IndicatorETLLog records (indicator relation is null)`,
+      );
+    }
+
+    const mappedLogs = validLogs.map((log) => ({
       id: log.id,
       indicatorId: log.indicatorId,
-      indicatorName: log.indicator.indicatorEN,
-      categoryName: log.indicator.category.name,
+      indicatorName: log.indicator?.indicatorEN || 'Unknown',
+      categoryName: log.indicator?.category?.name || 'Unknown',
       jobId: log.jobId,
       status: log.status,
       errorCode: log.errorCode,
@@ -196,9 +217,9 @@ export class JobManagementService {
       completedAt: log.completedAt?.toISOString(),
       createdAt: log.createdAt.toISOString(),
       metadata: log.metadata,
-      apiSource: log.indicator.source,
-      seriesId: log.indicator.seriesIDs,
-      apiExample: log.indicator.apiExample,
+      apiSource: log.indicator?.source || null,
+      seriesId: log.indicator?.seriesIDs || null,
+      apiExample: log.indicator?.apiExample || null,
     }));
 
     return {

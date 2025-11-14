@@ -3,7 +3,9 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
 from services.etl_service import ETLService
+from utils.logger import get_logger
 
+logger = get_logger(__name__)
 router = APIRouter()
 
 class ETLJobRequest(BaseModel):
@@ -184,11 +186,17 @@ async def fetch_category_indicators(
     category_name: str = Path(..., description="Category name (Macro, Micro, etc.)"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
-    importance_min: int = Query(1, description="Minimum importance level"),
+    importance_min: Optional[int] = Query(None, description="Minimum importance level (1-5). If not provided, fetches all indicators regardless of importance."),
     background_tasks: BackgroundTasks = None
 ):
     try:
         service = ETLService()
+        
+        # Log the importance_min filter
+        if importance_min is not None:
+            logger.info(f"[ETL API] Fetching indicators for category '{category_name}' with importance_min={importance_min} (will only fetch indicators with importance >= {importance_min})")
+        else:
+            logger.info(f"[ETL API] Fetching ALL indicators for category '{category_name}' (no importance filter)")
         
         start_dt = None
         end_dt = None

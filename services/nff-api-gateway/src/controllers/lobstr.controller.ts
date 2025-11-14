@@ -1,33 +1,63 @@
-import { Controller, Get, Param, Post, Body, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Post,
+  Body,
+  Query,
+  Patch,
+  BadRequestException,
+} from '@nestjs/common';
 import { LobstrService } from '../services/lobstr.service';
-import { SchedulerService } from '../services/scheduler.service';
 import { TriggerRunDto } from '../dto/trigger-run.dto';
+import { WindowScheduleService } from '../services/window-schedule.service';
+import { UpdateWindowScheduleStatusDto } from '../dto/update-window-schedule-status.dto';
+import { UpdateScheduleStatusDto } from '../dto/update-schedule-status.dto';
+import { TweetClassificationService } from '../services/tweet-classification.service';
+import { ClassifyTweetsDto } from '../dto/classify-tweets.dto';
 
 @Controller('lobstr')
 export class LobstrController {
   constructor(
     private readonly lobstrService: LobstrService,
-    private readonly schedulerService: SchedulerService,
+    private readonly windowScheduleService: WindowScheduleService,
+    private readonly tweetClassificationService: TweetClassificationService,
   ) {}
 
-  @Get('squids')
-  async getSquidsList() {
-    return this.lobstrService.getSquidsList();
+  @Get('window-schedules')
+  async getWindowSchedules() {
+    return await this.windowScheduleService.getAllWindowSchedules();
   }
 
-  @Get('squids/:squidId')
-  async getSquidDetails(@Param('squidId') squidId: string) {
-    return this.lobstrService.getSquidDetails(squidId);
+  @Patch('window-schedules/:windowScheduleId/status')
+  async updateWindowScheduleStatus(
+    @Param('windowScheduleId') windowScheduleIdParam: string,
+    @Body() updateWindowScheduleStatusDto: UpdateWindowScheduleStatusDto,
+  ) {
+    const windowScheduleId = Number.parseInt(windowScheduleIdParam, 10);
+    if (Number.isNaN(windowScheduleId)) {
+      throw new BadRequestException('windowScheduleId must be a number');
+    }
+    return await this.windowScheduleService.setWindowScheduleStatus(
+      windowScheduleId,
+      updateWindowScheduleStatusDto.isActive,
+    );
   }
 
-  @Get('sync')
-  async syncSquids() {
-    return this.lobstrService.syncSquidsToDatabase();
+  @Get('schedules/:scheduleId')
+  async getSchedule(@Param('scheduleId') scheduleId: string) {
+    return await this.lobstrService.getSchedule(scheduleId);
   }
 
-  @Get('schedules')
-  async getSchedules() {
-    return this.lobstrService.getSchedules();
+  @Patch('schedules/:scheduleId/status')
+  async updateScheduleStatus(
+    @Param('scheduleId') scheduleId: string,
+    @Body() updateScheduleStatusDto: UpdateScheduleStatusDto,
+  ) {
+    return await this.lobstrService.setScheduleStatus(
+      scheduleId,
+      updateScheduleStatusDto.isActive,
+    );
   }
 
   @Post('trigger-run')
@@ -47,7 +77,6 @@ export class LobstrController {
 
   @Get('raw-data')
   async getRawDataList(
-    @Query('runId') runId?: string,
     @Query('pageNumber') pageNumber?: string,
     @Query('pageSize') pageSize?: string,
   ) {
@@ -61,14 +90,22 @@ export class LobstrController {
       throw new Error('pageSize must be between 1 and 100');
     }
 
-    return this.lobstrService.getRawDataList(runId, pageNum, pageSz);
+    return this.lobstrService.getRawDataList(pageNum, pageSz);
   }
 
-  @Post('raw-data/fetch')
-  async triggerManualFetch(@Query('scheduleId') scheduleId: string) {
-    if (!scheduleId) {
-      throw new Error('scheduleId is required');
-    }
-    return this.schedulerService.triggerManualFetch(scheduleId);
+  @Post('classify')
+  async classifyTweets(@Body() dto: ClassifyTweetsDto) {
+    return await this.tweetClassificationService.classify(dto);
+  }
+
+  @Patch('tweets/:tweetId/category')
+  async changeTweetCategory(
+    @Param('tweetId') tweetId: string,
+    @Body() body: { category: string },
+  ) {
+    return await this.tweetClassificationService.changeCategory(
+      tweetId,
+      body.category,
+    );
   }
 }

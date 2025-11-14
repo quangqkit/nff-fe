@@ -202,17 +202,17 @@ model ReportSection {
 }
 
 model ReportBlock {
-  id         Int           @id @default(autoincrement())
-  sectionId  Int
-  name       String
-  type       BlockType
-  content    Json
-  columns    Int           @default(12)
-  orderIndex Int
-  isEnabled  Boolean       @default(true)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  section    ReportSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  id               Int               @id @default(autoincrement())
+  sectionId        Int
+  name             String
+  type             BlockType
+  content          Json
+  columns          Int               @default(12)
+  orderIndex       Int
+  isEnabled        Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  section          ReportSection     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   indicatorConfigs IndicatorConfig[]
 
   @@index([sectionId, orderIndex])
@@ -254,7 +254,6 @@ model ReportShare {
   @@index([expiresAt], map: "idx_report_shares_expires")
 }
 
-
 enum BlockType {
   TEXT
   CHART
@@ -274,15 +273,15 @@ enum ETLStatus {
 }
 
 model IndicatorConfig {
-  id               Int      @id @default(autoincrement())
-  indicatorId      String   @db.VarChar(100)
-  blockId          Int?
-  chartType        String   @default("line") @db.VarChar(50)
-  dateRangeStart   DateTime
-  dateRangeEnd     DateTime
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  reportBlock      ReportBlock? @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  id             Int          @id @default(autoincrement())
+  indicatorId    String       @db.VarChar(100)
+  blockId        Int?
+  chartType      String       @default("line") @db.VarChar(50)
+  dateRangeStart DateTime
+  dateRangeEnd   DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  reportBlock    ReportBlock? @relation(fields: [blockId], references: [id], onDelete: Cascade)
 
   @@unique([indicatorId, blockId])
   @@index([indicatorId])
@@ -297,43 +296,62 @@ enum ETLJobStatus {
 
 // Lobstr Integration Models
 model LobstrSchedule {
-  id                Int       @id @default(autoincrement())
-  scheduleId        String    @unique // Lobstr schedule ID
-  name              String
-  description       String?
-  isActive          Boolean   @default(true)
-  cronExpression    String?   // Cron expression for scheduling
-  timezone          String    @default("Asia/Jerusalem")
-  lookbackHours     Int       @default(4) // Hours to look back
-  keywords          String[]  @default([]) // Keywords to filter tweets
-  accounts          String[]  @default([]) // Twitter accounts to monitor
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  runs              LobstrRun[]
+  id               Int             @id @default(autoincrement())
+  scheduleId       String          @unique // Lobstr schedule ID
+  name             String
+  description      String?
+  isActive         Boolean         @default(true)
+  cronExpression   String? // Cron expression for scheduling
+  timezone         String          @default("Asia/Jerusalem")
+  lookbackHours    Int             @default(4) // Hours to look back
+  keywords         String[]        @default([]) // Keywords to filter tweets
+  accounts         String[]        @default([]) // Twitter accounts to monitor
+  windowScheduleId Int?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  runs             LobstrRun[]
+  tweets           TweetRaw[]      @relation("ScheduleTweetRaw")
+  windowSchedule   WindowSchedule? @relation(fields: [windowScheduleId], references: [id], onDelete: SetNull)
 
   @@index([scheduleId])
   @@index([isActive])
+  @@index([windowScheduleId])
+}
+
+model WindowSchedule {
+  id              Int              @id @default(autoincrement())
+  windowTime      String           @unique
+  name            String?
+  isActive        Boolean          @default(true)
+  timezone        String           @default("Asia/Jerusalem")
+  lookbackHours   Int              @default(4)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  lobstrSchedules LobstrSchedule[]
+
+  @@index([windowTime])
 }
 
 model LobstrRun {
-  id                Int       @id @default(autoincrement())
-  scheduleId        Int
-  runId             String    @unique // Unique run identifier
-  runType           String    @default("auto") // auto | manual
-  status            String    @default("pending") // pending | running | completed | failed
-  windowStart       DateTime
-  windowEnd         DateTime
-  tweetsFetched     Int       @default(0)
-  tweetsProcessed   Int       @default(0)
-  tweetsDropped     Int       @default(0)
-  errors            Json?     // Error details
-  metadata          Json?     // Additional run metadata
-  startedAt         DateTime?
-  completedAt       DateTime?
-  durationMs        Int?      // Duration in milliseconds
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  schedule          LobstrSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  id              Int            @id @default(autoincrement())
+  scheduleId      Int
+  runId           String         @unique // Unique run identifier
+  runType         String         @default("auto") // auto | manual
+  status          String         @default("pending") // pending | running | completed | failed
+  windowStart     DateTime
+  windowEnd       DateTime
+  tweetsFetched   Int            @default(0)
+  tweetsProcessed Int            @default(0)
+  tweetsDropped   Int            @default(0)
+  errors          Json? // Error details
+  metadata        Json? // Additional run metadata
+  startedAt       DateTime?
+  completedAt     DateTime?
+  durationMs      Int? // Duration in milliseconds
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  schedule        LobstrSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  tweets          TweetRaw[]     @relation("RunTweetRaw")
 
   @@index([scheduleId])
   @@index([status])
@@ -342,24 +360,27 @@ model LobstrRun {
 }
 
 model TweetRaw {
-  id                Int       @id @default(autoincrement())
-  scheduleId        String    // Lobstr schedule ID (not internal DB ID)
-  runId             String    // Lobstr run ID (not internal DB ID)
-  tweetId           String    @unique // Twitter tweet ID
-  externalId        String?   // External reference ID
-  source            String    @default("lobstr")
-  authorId          String?   // Twitter author ID
-  authorHandle      String?   // Twitter handle
-  text              String
-  lang              String?   @default("en") // Changed from 'language' to 'lang'
-  createdAt         DateTime  // Tweet creation time
-  fetchedAt         DateTime  @default(now()) // When we fetched it
-  isReply           Boolean   @default(false)
-  isRetweet         Boolean   @default(false)
-  publicMetrics     Json?     // Likes, retweets, replies count
-  urls              Json?     // URLs in the tweet
-  symbols           String[]  @default([]) // Stock symbols mentioned
+  id            Int            @id @default(autoincrement())
+  scheduleId    String // Lobstr schedule ID (not internal DB ID)
+  runId         String // Lobstr run ID (not internal DB ID)
+  tweetId       String         @unique // Twitter tweet ID
+  externalId    String? // External reference ID
+  source        String         @default("lobstr")
+  authorId      String? // Twitter author ID
+  authorHandle  String? // Twitter handle
+  text          String
+  lang          String?        @default("en") // Changed from 'language' to 'lang'
+  createdAt     DateTime // Tweet creation time
+  fetchedAt     DateTime       @default(now()) // When we fetched it
+  isReply       Boolean        @default(false)
+  isRetweet     Boolean        @default(false)
+  publicMetrics Json? // Likes, retweets, replies count
+  urls          Json? // URLs in the tweet
+  symbols       String[]       @default([]) // Stock symbols mentioned
+  schedule      LobstrSchedule @relation("ScheduleTweetRaw", fields: [scheduleId], references: [scheduleId], onDelete: Cascade)
+  run           LobstrRun      @relation("RunTweetRaw", fields: [runId], references: [runId], onDelete: Cascade)
 
+  @@unique([source, externalId])
   @@index([tweetId])
   @@index([scheduleId])
   @@index([runId])
@@ -367,63 +388,98 @@ model TweetRaw {
   @@index([lang])
   @@index([isReply, isRetweet])
   @@index([symbols])
-  @@unique([source, externalId])
 }
 
-model TweetEnrichment {
-  id                Int       @id @default(autoincrement())
-  tweetId           String    @unique // FK to TweetRaw.tweetId
-  aiSummary         String?   // AI-generated summary
-  aiLabels          String[]  @default([]) // AI-generated labels/tags
-  aiConfidence      Decimal?  @db.Decimal(5, 4) // Confidence score 0-1
-  sentiment         String?   @db.VarChar(20) // positive, negative, neutral
-  topic             String?   @db.VarChar(100) // Main topic/category
-  tickerCandidates  String[]  @default([]) // Potential stock tickers
-  moverFlag         Boolean   @default(false) // Market mover flag
-  reasonTypes       String[]  @default([]) // Earnings, AnalystRating, etc.
-  processedAt       DateTime  @default(now())
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+model Tweet {
+  id               Int               @id @default(autoincrement())
+  tweetId          String            @unique
+  category         String
+  tickers          String[]
+  sectors          String[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  storyTickerItems StoryTickerItem[]
+  storySectorItems StorySectorItem[]
 
-  @@index([tweetId])
-  @@index([moverFlag])
-  @@index([reasonTypes])
-  @@index([sentiment])
-  @@index([processedAt])
+  @@index([category])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
-model Catalyst {
-  id                    Int       @id @default(autoincrement())
-  title                 String
-  summary               String
-  ticker                String    @db.VarChar(20)
-  reasonTypes           String[]  @default([])
-  mergedFromTweetsIds   String[]  @default([])
-  tweetLinks            Json?     // Tweet links with metadata
-  confidence            Decimal   @db.Decimal(5, 4)
-  tweetCount            Int       @default(0)
-  timeWindow            DateTime
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+enum StoryType {
+  TICKER
+  SECTOR
+}
 
+enum StoryStatus {
+  PENDING
+  GROUPED
+  COMPOSED
+  PUBLISHED
+}
+
+model Story {
+  id           Int               @id @default(autoincrement())
+  type         StoryType // TICKER or SECTOR
+  ticker       String? // For TICKER type
+  sector       String? // For SECTOR type
+  runId        String? // Optional: link to specific run
+  scheduleId   String? // Optional: link to specific schedule
+  status       StoryStatus       @default(PENDING)
+  categories   String[]          @default([]) // Aggregated categories from tweets
+  composedText String? // Generated text from LLM compose step
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  tickerItems  StoryTickerItem[]
+  sectorItems  StorySectorItem[]
+
+  @@index([type])
   @@index([ticker])
-  @@index([reasonTypes])
-  @@index([timeWindow])
-  @@index([confidence])
+  @@index([sector])
+  @@index([status])
+  @@index([runId])
+  @@index([scheduleId])
+  @@index([createdAt])
+}
+
+model StoryTickerItem {
+  id        Int      @id @default(autoincrement())
+  storyId   Int
+  tweetId   String
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  tweet     Tweet    @relation(fields: [tweetId], references: [tweetId], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([storyId, tweetId])
+  @@index([storyId])
+  @@index([tweetId])
+}
+
+model StorySectorItem {
+  id        Int      @id @default(autoincrement())
+  storyId   Int
+  tweetId   String
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  tweet     Tweet    @relation(fields: [tweetId], references: [tweetId], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([storyId, tweetId])
+  @@index([storyId])
+  @@index([tweetId])
 }
 
 // TradingView Integration Models
 model TradingViewStock {
-  id                        Int       @id @default(autoincrement())
-  symbol                    String    @db.VarChar(20)
-  companyName               String    @db.VarChar(200)
-  preMarketChangePercent    String?   @db.VarChar(20)
-  marketCap                 String?   @db.VarChar(50)
-  source                    String    @default("tradingview") @db.VarChar(50)
-  dataType                  String    @db.VarChar(20) // 'gainers' hoặc 'losers'
-  fetchTime                 DateTime  @default(now()) // Thời gian fetch data
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  id                     Int      @id @default(autoincrement())
+  symbol                 String   @db.VarChar(20)
+  companyName            String   @db.VarChar(200)
+  preMarketChangePercent String?  @db.VarChar(20)
+  marketCap              String?  @db.VarChar(50)
+  source                 String   @default("tradingview") @db.VarChar(50)
+  dataType               String   @db.VarChar(20) // 'gainers' hoặc 'losers'
+  fetchTime              DateTime @default(now()) // Thời gian fetch data
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([symbol])
   @@index([dataType])

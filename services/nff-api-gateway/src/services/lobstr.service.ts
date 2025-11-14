@@ -3,12 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from './prisma.service';
-import { Prisma } from '@prisma/client';
 import {
-  LobstrSquidsListResponse,
-  LobstrSquidDetailsResponse,
-  LobstrSchedule,
-  LobstrSquid,
   LobstrRunResponse,
   LobstrRunsListResponse,
   LobstrRunDetailResponse,
@@ -17,6 +12,7 @@ import {
   LobstrAddTasksResponse,
   LobstrGetTasksResponse,
   LobstrTask,
+  LobstrSquidDetailsResponse,
 } from '../types/lobstr.interface';
 import { TriggerRunDto } from '../dto/trigger-run.dto';
 import { LobstrRetryContext } from '../types/lobstr.interface';
@@ -38,93 +34,6 @@ export class LobstrService {
     this.apiKey = this.configService.get<string>('LOBSTR_API_KEY') || '';
     this.baseUrl = this.configService.get<string>('LOBSTR_BASE_URL') || '';
     this.retryHelper = new LobstrRetryHelper();
-  }
-
-  async getSquidsList(): Promise<LobstrSquidsListResponse> {
-    const baseUrl = this.baseUrl.endsWith('/v1')
-      ? this.baseUrl
-      : `${this.baseUrl}/v1`;
-    const fullUrl = `${baseUrl}/squids`;
-    const headers = {
-      Authorization: `Token ${this.apiKey}`,
-    };
-    const response = await firstValueFrom(
-      this.httpService.get<LobstrSquidsListResponse>(fullUrl, {
-        headers,
-      }),
-    );
-
-    return {
-      data: response.data.data.slice(0, 4),
-      total_results: response.data.total_results,
-      limit: response.data.limit,
-      page: response.data.page,
-      total_pages: response.data.total_pages,
-      result_from: response.data.result_from,
-      result_to: response.data.result_to,
-    };
-  }
-
-  async getSquidDetails(squidId: string): Promise<LobstrSquidDetailsResponse> {
-    const baseUrl = this.baseUrl.endsWith('/v1')
-      ? this.baseUrl
-      : `${this.baseUrl}/v1`;
-    const fullUrl = `${baseUrl}/squids/${squidId}`;
-    const headers = {
-      Authorization: `Token ${this.apiKey}`,
-    };
-    const response = await firstValueFrom(
-      this.httpService.get<LobstrSquidDetailsResponse>(fullUrl, {
-        headers,
-      }),
-    );
-
-    return response.data;
-  }
-
-  async syncSquidsToDatabase(): Promise<{ totalFetched: number }> {
-    await this.prisma.lobstrSchedule.deleteMany({});
-    const allSquids = await this.fetchAllSquids();
-    await this.prisma.lobstrSchedule.createMany({
-      data: allSquids.map((squid) => this.convertSquidToSchedule(squid)),
-    });
-
-    return {
-      totalFetched: allSquids.length,
-    };
-  }
-
-  private async fetchAllSquids(): Promise<LobstrSquid[]> {
-    try {
-      const response = await this.getSquidsList();
-      return response.data;
-    } catch (error) {
-      throw new HttpException(
-        `Failed to fetch squids: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  private convertSquidToSchedule(squid: LobstrSquid): any {
-    return {
-      scheduleId: squid.id,
-      name: squid.name,
-      description: null,
-      isActive: squid.is_active,
-      cronExpression: squid.cron_expression,
-      timezone: squid.timezone,
-      lookbackHours: squid.params.hours_back,
-      keywords: [],
-      accounts: squid.accounts.map((acc) => acc.id),
-    };
-  }
-
-  async getSchedules(): Promise<LobstrSchedule[]> {
-    const schedules = await this.prisma.lobstrSchedule.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
-    return schedules;
   }
 
   async triggerRun(triggerRunDto: TriggerRunDto): Promise<LobstrRunResponse> {
@@ -161,23 +70,11 @@ export class LobstrService {
         if (endDate) {
           requestBody.end_date = endDate.toISOString();
         }
-
-        this.logger.log(
-          `Triggering run with date range: ${startDate?.toISOString()} to ${endDate?.toISOString()}`,
-        );
-      } else {
-        this.logger.log(
-          `Triggering run without date range (using schedule default)`,
-        );
       }
 
       if (triggerRunDto.metadata) {
         requestBody.metadata = triggerRunDto.metadata;
       }
-
-      this.logger.log(
-        `[TRIGGER] Triggering run for Squid ID: ${triggerRunDto.squidId}`,
-      );
 
       const response = await firstValueFrom(
         this.httpService.post<LobstrRunResponse>(fullUrl, requestBody, {
@@ -185,19 +82,9 @@ export class LobstrService {
         }),
       );
 
-      this.logger.log(
-        `[TRIGGER] Run triggered successfully - Squid ID: ${triggerRunDto.squidId}, Run ID: ${response.data.id}`,
-      );
-      this.logger.log(
-        `[TEST INFO] For Swagger testing - Squid ID: ${triggerRunDto.squidId}, Run ID: ${response.data.id}`,
-      );
       return response.data;
     } catch (error) {
-      this.logger.error(`Failed to trigger run: ${error.message}`, error.stack);
-      throw new HttpException(
-        `Failed to trigger run: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException(error.message, error.status);
     }
   }
 
@@ -249,10 +136,6 @@ export class LobstrService {
         Authorization: `Token ${this.apiKey}`,
       };
 
-      this.logger.log(
-        `[Attempt ${context.attempt}] Fetching runs for squid: ${squidId}`,
-      );
-
       const response = await firstValueFrom(
         this.httpService.get<LobstrRunsListResponse>(fullUrl, {
           headers,
@@ -267,15 +150,10 @@ export class LobstrService {
         );
       }
 
-      this.logger.log(
-        `Successfully fetched ${response.data.data?.length || 0} runs for squid: ${squidId}`,
-      );
       return response.data;
     } catch (error) {
       const errorCode = LobstrErrorClassifier.classifyError(error);
-      const errorDetails = LobstrErrorClassifier.extractErrorDetails(error);
 
-      // Update retry context
       context.last_error_code = errorCode;
       if (context.last_error_code === errorCode) {
         context.consecutive_same_errors++;
@@ -285,23 +163,12 @@ export class LobstrService {
 
       if (this.retryHelper.shouldRetry(error, context)) {
         const delay = this.retryHelper.calculateDelay(context.attempt);
-        this.logger.warn(
-          `Retrying getRunsList in ${delay}ms (attempt ${context.attempt}/3) - Error: ${errorCode}`,
-        );
 
         await this.retryHelper.sleep(delay);
         return this.getRunsListWithRetry(squidId, context);
       }
 
-      this.logger.error(
-        `Failed to fetch runs list after ${context.attempt} attempts: ${errorDetails.message}`,
-        error.stack,
-      );
-
-      throw new HttpException(
-        `Failed to fetch runs list: ${errorDetails.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException(error.message, error.status);
     }
   }
 
@@ -338,10 +205,6 @@ export class LobstrService {
         : `${this.baseUrl}/v1`;
       const fullUrl = `${baseUrl}/runs/${runId}/download`;
 
-      this.logger.log(
-        `[DOWNLOAD] Requesting download URL for Run ID: ${runId}, URL: ${fullUrl}`,
-      );
-
       const headers = {
         Authorization: `Token ${this.apiKey}`,
       };
@@ -349,89 +212,20 @@ export class LobstrService {
       const response = await firstValueFrom(
         this.httpService.get<LobstrDownloadResponse>(fullUrl, {
           headers,
-          timeout: 30000,
         }),
       );
 
-      const downloadUrl = response.data.download_url || response.data.s3;
-      this.logger.log(
-        `[DOWNLOAD] Successfully obtained download URL for Run ID: ${runId}`,
-      );
-      this.logger.log(`[DOWNLOAD] Download URL: ${downloadUrl}`);
-      this.logger.log(
-        `[TEST INFO] For Swagger testing - Run ID: ${runId}, Download URL: ${downloadUrl}`,
-      );
-
-      const metadata = this.retryHelper.createRequestMetadata(
-        fullUrl,
-        response.status,
-        response.data,
-        undefined,
-        0,
-      );
-      this.retryHelper.logRequestMetadata(metadata);
-
       return response.data;
     } catch (error) {
-      const errorDetails = LobstrErrorClassifier.extractErrorDetails(error);
-      const statusCode = Number(error.response?.status) || 0;
-
-      this.logger.error(
-        `[DOWNLOAD] Failed to get download URL for Run ID: ${runId}, Status: ${statusCode}, Error: ${errorDetails.message}`,
-      );
-
-      if (statusCode === 400) {
-        const errorData = error.response?.data;
-        this.logger.error(
-          `[DOWNLOAD] Run ID ${runId} may not be ready yet or invalid. Response: ${JSON.stringify(errorData)}`,
-        );
-
-        if (errorData?.errors?.type === 'NoResultsAvailable') {
-          const noResultsError = new HttpException(
-            {
-              message: 'No results available yet for the specified run',
-              type: 'NoResultsAvailable',
-              code: 400,
-              errors: errorData.errors,
-            },
-            HttpStatus.BAD_REQUEST,
-          );
-          throw noResultsError;
-        }
-      }
-
-      const metadata = this.retryHelper.createRequestMetadata(
-        `${this.baseUrl}/runs/${runId}/download`,
-        statusCode,
-        error.response?.data || error.message,
-        error,
-        0,
-      );
-      this.retryHelper.logRequestMetadata(metadata, error);
-
-      throw new HttpException(
-        `Failed to generate download URL: ${errorDetails.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException(error.message, error.status);
     }
   }
 
-  async getRawDataList(
-    runId?: string,
-    pageNumber: number = 1,
-    pageSize: number = 50,
-  ) {
+  async getRawDataList(pageNumber: number = 1, pageSize: number = 50) {
     try {
-      const where: Prisma.TweetRawWhereInput = {};
-
-      if (runId) {
-        where.runId = runId;
-      }
-
       const skip = (pageNumber - 1) * pageSize;
       const [tweets, total] = await Promise.all([
         this.prisma.tweetRaw.findMany({
-          where,
           orderBy: {
             fetchedAt: 'desc',
           },
@@ -453,7 +247,7 @@ export class LobstrService {
             lang: true,
           },
         }),
-        this.prisma.tweetRaw.count({ where }),
+        this.prisma.tweetRaw.count(),
       ]);
 
       const totalPages = Math.ceil(total / pageSize);
@@ -599,6 +393,81 @@ export class LobstrService {
       );
       throw new HttpException(
         `Failed to delete all tasks: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getSchedule(scheduleId: string): Promise<LobstrSquidDetailsResponse> {
+    try {
+      const baseUrl = this.baseUrl.endsWith('/v1')
+        ? this.baseUrl
+        : `${this.baseUrl}/v1`;
+      const fullUrl = `${baseUrl}/squids/${scheduleId}`;
+
+      const headers = {
+        Authorization: `Token ${this.apiKey}`,
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.get<LobstrSquidDetailsResponse>(fullUrl, {
+          headers,
+        }),
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get schedule: ${error.message}`,
+        error.stack,
+      );
+      throw new HttpException(
+        `Failed to get schedule: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async setScheduleStatus(
+    scheduleId: string,
+    isActive: boolean,
+  ): Promise<LobstrSquidDetailsResponse> {
+    try {
+      const baseUrl = this.baseUrl.endsWith('/v1')
+        ? this.baseUrl
+        : `${this.baseUrl}/v1`;
+      const fullUrl = `${baseUrl}/squids/${scheduleId}`;
+
+      const headers = {
+        Authorization: `Token ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      };
+
+      const requestBody = {
+        is_active: isActive,
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.patch<LobstrSquidDetailsResponse>(
+          fullUrl,
+          requestBody,
+          {
+            headers,
+          },
+        ),
+      );
+
+      this.logger.log(
+        `Schedule ${scheduleId} status updated to ${isActive ? 'active' : 'inactive'}`,
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `Failed to set schedule status: ${error.message}`,
+        error.stack,
+      );
+      throw new HttpException(
+        `Failed to set schedule status: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

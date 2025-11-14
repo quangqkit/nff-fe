@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from datetime import datetime, date
 from utils.logger import get_logger
+from config import settings
 
 logger = get_logger(__name__)
 
@@ -25,8 +26,15 @@ class FREDDataFetcher(BaseDataFetcher):
         logger.info("FRED API fetcher initialized successfully")
 
     def _get_api_key(self) -> Optional[str]:
-        api_key = os.getenv('FRED_API_KEY')
+        # Try settings first (loads from .env file)
+        api_key = settings.FRED_API_KEY
         
+        if api_key:
+            logger.info("FRED API key found in settings (from .env file)")
+            return api_key
+        
+        # Fallback to environment variables
+        api_key = os.getenv('FRED_API_KEY')
         if api_key:
             logger.info("FRED API key found in environment variables")
             return api_key
@@ -36,7 +44,7 @@ class FREDDataFetcher(BaseDataFetcher):
             logger.info("FRED API key found in alternative environment variable")
             return api_key
         
-        logger.warning("FRED API key not found in environment variables")
+        logger.warning("FRED API key not found in environment variables or .env file")
         return None
 
     async def fetch(self, series_id: str, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Dict[str, Any]]:
@@ -221,7 +229,8 @@ class DataFetcherFactory:
     def get_available_sources() -> List[str]:
         available = []
         
-        if os.getenv('FRED_API_KEY'):
+        # Check settings first (from .env), then environment variables
+        if settings.FRED_API_KEY or os.getenv('FRED_API_KEY'):
             available.append('FRED')
         
         if os.getenv('SHILLER_DATA_URL'):
@@ -231,7 +240,9 @@ class DataFetcherFactory:
     
     @staticmethod
     def get_api_keys_status() -> Dict[str, str]:
+        # Check settings first (from .env), then environment variables
+        fred_configured = bool(settings.FRED_API_KEY or os.getenv('FRED_API_KEY'))
         return {
-            'fred': 'configured' if os.getenv('FRED_API_KEY') else 'missing',
+            'fred': 'configured' if fred_configured else 'missing',
             'shiller': 'configured' if os.getenv('SHILLER_DATA_URL') else 'missing',
         }

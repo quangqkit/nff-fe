@@ -3,7 +3,8 @@ Enhanced Excel Import Service with Default Selection Logic
 """
 import pandas as pd
 import requests
-import tempfile 
+import tempfile
+import asyncio
 from services.indicator_metadata_service import IndicatorMetadataService
 from services.excel_config_service import ExcelConfigService
 from core.default_selection import DefaultSelectionProcessor
@@ -57,7 +58,8 @@ class ExcelImportService:
             
             logger.info(f"Loading Excel file: {excel_path}, sheet: {sheet_name}")
             df = pd.read_excel(excel_path, sheet_name=sheet_name)
-            logger.info(f"Loaded {len(df)} indicators from '{sheet_name}' sheet")
+            total_rows = len(df)
+            logger.info(f"Loaded {total_rows} rows from '{sheet_name}' sheet")
 
             category = await self.indicator_metadata_service.get_or_create_category(category_name)
             if not category:
@@ -72,12 +74,32 @@ class ExcelImportService:
             
             processed_count = 0
             error_count = 0
+            skipped_count = 0
+            blocked_count = 0
+            unknown_count = 0
+            error_details = []  # Store detailed error information
+            
+            logger.info(f"Starting to process {total_rows} rows...")
             
             for idx, row in df.iterrows():
+                row_num = idx + 1  # Excel row number (1-based)
+                
+                # Log progress every 50 rows
+                if row_num % 50 == 0 or row_num == 1:
+                    logger.info(f"[PROGRESS] Processing row {row_num}/{total_rows} (Processed: {processed_count}, Errors: {error_count}, Skipped: {skipped_count})")
+                
                 try:
-                    indicator_en = str(row.get('Indicator_EN', f'Unnamed Indicator Row {idx+1}')).strip()
+                    indicator_en = str(row.get('Indicator_EN', f'Unnamed Indicator Row {row_num}')).strip()
                     if not indicator_en or indicator_en == 'nan':
-                        logger.warning(f"Skipping row {idx+1} due to missing Indicator_EN.")
+                        skipped_count += 1
+                        error_msg = f"Row {row_num}: Missing Indicator_EN"
+                        logger.warning(f"[SKIP] {error_msg}")
+                        error_details.append({
+                            "row": row_num,
+                            "status": "SKIPPED",
+                            "reason": "Missing Indicator_EN",
+                            "indicator": None
+                        })
                         continue
 
                     relevant_reports_value = row.get('Relevant_Reports')
@@ -86,25 +108,33 @@ class ExcelImportService:
                     else:
                         relevantReports = []
                     
-                        source_value = row.get('Source')
+                    source_value = row.get('Source')
                     if pd.isna(source_value) or str(source_value).strip().lower() in ['nan', 'none', 'null', '']:
                         source = 'N/A'
                     else:
                         source = str(source_value).strip()
                     
+                    # Determine initial ETL status based on source
                     if source not in self.SUPPORTED_SOURCES and source != 'N/A':
-                        logger.info(f"Indicator '{indicator_en}' has unsupported source '{source}'. ETL will be BLOCKED but source will be preserved.")
+                        logger.info(f"[BLOCKED] Row {row_num} - Indicator '{indicator_en}': Unsupported source '{source}'")
                         etl_status = 'BLOCKED'
                         etl_notes = f"Unsupported data source: {source}"
                     else:
                         etl_status = 'UNKNOWN'
                         etl_notes = None
                     
+                    # Check Series_IDs for supported sources
                     series_ids = str(row.get('Series_IDs', None)).strip() if pd.notna(row.get('Series_IDs')) else None
                     if source in self.SUPPORTED_SOURCES and (not series_ids or series_ids.lower() in ['none', 'null', 'nan', '']):
-                        logger.warning(f"Indicator '{indicator_en}' has source '{source}' but no valid Series_IDs")
+                        logger.warning(f"[BLOCKED] Row {row_num} - Indicator '{indicator_en}': Source '{source}' but no valid Series_IDs")
                         etl_status = 'BLOCKED'
                         etl_notes = f"No series ID configured for {source} source"
+                    
+                    # Count by final status
+                    if etl_status == 'BLOCKED':
+                        blocked_count += 1
+                    elif etl_status == 'UNKNOWN':
+                        unknown_count += 1
                     
                     indicator_data = {
                         'moduleEN': str(row.get('Module_EN', 'Unknown')).strip(),
@@ -124,26 +154,100 @@ class ExcelImportService:
                         'isActive': True,
                     }
                     
-                    indicator = await self.indicator_metadata_service.upsert_indicator_metadata(indicator_data)
+                    # Retry logic for database operations
+                    max_retries = 3
+                    retry_count = 0
+                    indicator = None
                     
-                    await self._create_default_mappings_for_indicator(indicator, row)
+                    while retry_count < max_retries:
+                        try:
+                            indicator = await self.indicator_metadata_service.upsert_indicator_metadata(indicator_data)
+                            break  # Success, exit retry loop
+                        except Exception as db_error:
+                            retry_count += 1
+                            if retry_count >= max_retries:
+                                # Final attempt failed, re-raise
+                                logger.error(f"[ERROR] Row {row_num} - Database error after {max_retries} retries: {db_error}")
+                                raise
+                            else:
+                                # Wait before retry (exponential backoff)
+                                wait_time = 0.5 * (2 ** (retry_count - 1))
+                                logger.warning(f"[RETRY] Row {row_num} - Retry {retry_count}/{max_retries} after {wait_time}s: {db_error}")
+                                await asyncio.sleep(wait_time)
+                    
+                    # Create default mappings with separate error handling to not stop the process
+                    if indicator:
+                        try:
+                            await self._create_default_mappings_for_indicator(indicator, row)
+                        except Exception as mapping_error:
+                            # Log but don't fail the entire import for mapping errors
+                            logger.warning(f"[WARNING] Row {row_num} - Failed to create default mappings for '{indicator_en}': {mapping_error}")
                     
                     processed_count += 1
+                    if row_num % 10 == 0:  # Log every 10 successful imports
+                        logger.info(f"[SUCCESS] Row {row_num}/{total_rows} - Indicator '{indicator_en}' imported (Status: {etl_status})")
 
                 except Exception as e:
                     error_count += 1
-                    logger.error(f"Error processing indicator from row {idx+1}: {e}")
+                    error_msg = str(e)
+                    # Try to get indicator_en from the row if not already defined
+                    try:
+                        indicator_name = indicator_en if 'indicator_en' in locals() else str(row.get('Indicator_EN', 'Unknown')).strip()
+                    except:
+                        indicator_name = 'Unknown'
+                    
+                    logger.error(f"[ERROR] Row {row_num}/{total_rows} - Indicator '{indicator_name}': {error_msg}", exc_info=True)
+                    error_details.append({
+                        "row": row_num,
+                        "status": "ERROR",
+                        "reason": error_msg,
+                        "indicator": indicator_name if indicator_name and indicator_name != 'Unknown' else None,
+                        "error_type": type(e).__name__
+                    })
+                    # Continue processing next row instead of stopping
+                    continue
 
             default_mappings = self.default_processor.create_default_mappings(df)
+            
+            # Calculate summary
+            total_processed = processed_count + error_count + skipped_count
+            summary_msg = (
+                f"Excel import summary for '{category_name}':\n"
+                f"  Total rows in Excel: {total_rows}\n"
+                f"  Successfully processed: {processed_count}\n"
+                f"    - UNKNOWN (will be fetched): {unknown_count}\n"
+                f"    - BLOCKED (will NOT be fetched): {blocked_count}\n"
+                f"  Skipped (missing Indicator_EN): {skipped_count}\n"
+                f"  Errors: {error_count}\n"
+                f"  Total handled: {total_processed}/{total_rows}"
+            )
+            
+            if total_processed < total_rows:
+                missing = total_rows - total_processed
+                summary_msg += f"\n  ⚠️  WARNING: {missing} rows not accounted for!"
+                logger.warning(f"Row count mismatch: Expected {total_rows}, but only processed {total_processed}")
             
             result = {
                 "success": True, 
                 "message": f"Imported {processed_count} indicators successfully",
+                "total_rows": total_rows,
                 "processed_count": processed_count,
+                "skipped_count": skipped_count,
                 "error_count": error_count,
+                "blocked_count": blocked_count,
+                "unknown_count": unknown_count,
                 "default_mappings_created": len(default_mappings),
-                "category": category_name
+                "category": category_name,
+                "error_details": error_details[:50] if error_details else []  # Limit to first 50 errors
             }
+            
+            logger.info(summary_msg)
+            
+            # Log error details if any
+            if error_details:
+                logger.warning(f"Error details (showing first {min(50, len(error_details))}):")
+                for detail in error_details[:50]:
+                    logger.warning(f"  Row {detail['row']}: [{detail['status']}] {detail['reason']} - Indicator: {detail.get('indicator', 'N/A')}")
             
             try:
                 sync_result = await self._sync_indicator_defaults(category_name)
@@ -177,7 +281,8 @@ class ExcelImportService:
         from config import settings
         
         nest_api_url = settings.NEST_API_URL
-        sync_url = f"{nest_api_url}/api/report-types/sync-defaults/category/{category_name}"
+        # Remove /api prefix since NestJS already has global prefix
+        sync_url = f"{nest_api_url}/report-types/sync-defaults/category/{category_name}"
         
         logger.info(f"Calling sync API: {sync_url}")
         

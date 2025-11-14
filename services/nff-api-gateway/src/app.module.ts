@@ -18,6 +18,7 @@ import { ReportTypeModule } from './modules/report-type.module';
 import { ReportModule } from './modules/report.module';
 import { SchedulerModule } from './modules/scheduler.module';
 import { TradingViewModule } from './modules/tradingview.module';
+import { StoryModule } from './modules/story.module';
 import { ChartExportService } from './services/chart-export.service';
 import { ChartImageService } from './services/chart-image.service';
 import { ChartService } from './services/chart.service';
@@ -25,7 +26,7 @@ import { ExportService } from './services/export.service';
 import { HtmlService } from './services/html.service';
 import { PdfHtmlGeneratorService } from './services/pdf-html-generator.service';
 import { PdfService } from './services/pdf.service';
-import { SupabaseStorageService } from './services/supabase-storage.service';
+import { VercelBlobStorageService } from './services/vercel-blob-storage.service';
 
 import config from './shared/config';
 
@@ -48,6 +49,7 @@ import config from './shared/config';
     LobstrModule,
     SchedulerModule,
     TradingViewModule,
+    StoryModule,
   ],
   controllers: [
     AppController,
@@ -61,7 +63,7 @@ import config from './shared/config';
     ChartService,
     ChartExportService,
     ChartImageService,
-    SupabaseStorageService,
+    VercelBlobStorageService,
     HtmlService,
     PdfService,
     PdfHtmlGeneratorService,

@@ -15,6 +15,7 @@ import {
 interface RawTweetsListProps {
   tweets: RawTweet[];
   loading?: boolean;
+  onTweetSelect?: (tweet: RawTweet) => void;
 }
 
 const getSymbolColors = (index: number) => {
@@ -28,26 +29,35 @@ const getSymbolColors = (index: number) => {
   return colors[index % colors.length];
 };
 
-export function RawTweetsList({ tweets, loading }: RawTweetsListProps) {
+export function RawTweetsList({
+  tweets,
+  loading,
+  onTweetSelect,
+}: RawTweetsListProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="border-border/50 bg-card overflow-hidden">
-            <CardContent className="p-6">
-              <div className="animate-pulse space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-20 bg-primary/20 rounded-lg"></div>
-                  <div className="h-4 w-24 bg-muted rounded"></div>
-                </div>
-                <div className="space-y-2">
-                  <div className="h-4 bg-muted rounded w-full"></div>
-                  <div className="h-4 bg-muted rounded w-5/6"></div>
-                </div>
-                <div className="space-y-2 pt-3 border-t border-border/50">
-                  <div className="h-3 bg-muted rounded w-3/4"></div>
-                  <div className="h-3 bg-muted rounded w-2/3"></div>
-                </div>
+          <Card
+            key={i}
+            className="border-border/40 bg-white/80 backdrop-blur-sm rounded-3xl shadow-sm"
+          >
+            <CardContent className="p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="h-8 w-20 bg-muted rounded-full animate-pulse" />
+                <div className="h-4 w-16 bg-muted rounded animate-pulse" />
+              </div>
+              <div className="space-y-3">
+                <div className="h-5 bg-muted rounded animate-pulse" />
+                <div className="h-5 bg-muted rounded animate-pulse w-5/6" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/30">
+                {[1, 2, 3, 4].map((s) => (
+                  <div
+                    key={s}
+                    className="h-12 bg-muted rounded-xl animate-pulse"
+                  />
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -91,93 +101,80 @@ export function RawTweetsList({ tweets, loading }: RawTweetsListProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-      {tweets.map((tweet) => (
-        <Card
-          key={tweet.id}
-          className="relative border border-border bg-white dark:bg-card overflow-hidden hover:shadow-md hover:border-[#707FDD] transition-all duration-200"
-        >
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              {/* Header with ID and Author */}
-              <div className="flex items-center justify-between">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span className="text-xs font-bold">#{tweet.id}</span>
-                </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {tweets.map((tweet) => {
+        const handleCardClick = () => {
+          onTweetSelect?.(tweet);
+        };
+
+        const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            handleCardClick();
+          }
+        };
+
+        return (
+          <Card
+            key={tweet.id}
+            role={onTweetSelect ? "button" : undefined}
+            tabIndex={onTweetSelect ? 0 : undefined}
+            onClick={onTweetSelect ? handleCardClick : undefined}
+            onKeyDown={onTweetSelect ? handleKeyDown : undefined}
+            className="group relative border border-border/30 bg-white/90 dark:bg-card rounded-xl overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 cursor-pointer"
+          >
+            <CardContent className="p-5 flex flex-col gap-5 h-full">
+              <header className="flex items-center justify-between gap-4">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 text-white text-[11px] font-semibold shadow-sm">
+                  <Sparkles className="w-3 h-3" />#{tweet.id}
+                </span>
                 {tweet.authorHandle && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/50 border border-border/50">
-                    <User className="w-3 h-3 text-primary/70" />
-                    <span className="text-xs font-medium text-foreground/80">
-                      {tweet.authorHandle}
-                    </span>
-                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted border border-border/50 text-xs font-medium text-muted-foreground">
+                    <User className="w-3 h-3" />
+                    {tweet.authorHandle}
+                  </span>
                 )}
-              </div>
+              </header>
 
-              {/* Tweet Text */}
-              <div className="text-base font-semibold text-foreground line-clamp-3 leading-relaxed">
-                {tweet.text || "[...Title or short version of tweet...]"}
-              </div>
+              <h2 className="text-sm font-semibold text-foreground leading-relaxed line-clamp-2">
+                {tweet.text || "[No tweet body provided]"}
+              </h2>
 
-              {/* Metadata Section */}
-              <div className="space-y-2.5 pt-3 border-t border-border/50 bg-primary/5 rounded-lg p-3 -mx-3">
-                <div className="flex items-center gap-2.5 text-xs">
-                  <div className="p-1.5 rounded-lg bg-blue-500/20 border border-blue-400/30 shadow-sm">
-                    <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <span className="font-medium text-muted-foreground">
-                    Created:
-                  </span>
-                  <span className="text-foreground font-semibold">
-                    {formatDate(tweet.createdAt)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2.5 text-xs">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/30 shadow-sm">
-                    <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <span className="font-medium text-muted-foreground">
-                    Fetched:
-                  </span>
-                  <span className="text-foreground font-semibold">
-                    {formatDateOnly(tweet.fetchedAt)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2.5 text-xs pt-1">
-                  <div className="p-1.5 rounded-lg bg-purple-500/20 border border-purple-400/30 shadow-sm">
-                    <TrendingUp className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  <span className="font-medium text-muted-foreground">
-                    Schedule:
-                  </span>
-                  <span className="text-foreground font-semibold">
-                    {tweet.scheduleId}
-                    {tweet.scheduleName ? ` • ${tweet.scheduleName}` : ""}
-                  </span>
-                </div>
-              </div>
+              <section className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-600">
+                  <Clock className="w-3 h-3" />
+                  {formatDate(tweet.createdAt)}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600">
+                  <Calendar className="w-3 h-3" />
+                  {formatDateOnly(tweet.fetchedAt)}
+                </span>
+              </section>
 
-              {/* Symbols */}
               {tweet.symbols && tweet.symbols.length > 0 && (
-                <div className="flex gap-2 flex-wrap pt-1">
-                  {tweet.symbols.map((symbol, symbolIndex) => (
+                <section className="flex flex-wrap gap-1.5">
+                  {tweet.symbols.slice(0, 5).map((symbol, index) => (
                     <span
-                      key={symbol}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${getSymbolColors(
-                        symbolIndex
-                      )} text-white shadow-md border`}
+                      key={`${tweet.id}-${symbol}`}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold ${getSymbolColors(
+                        index
+                      )} text-white shadow-sm`}
                     >
                       <TrendingUp className="w-3 h-3" />
                       {symbol}
                     </span>
                   ))}
-                </div>
+                  {tweet.symbols.length > 5 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold bg-muted text-muted-foreground">
+                      +{tweet.symbols.length - 5}
+                    </span>
+                  )}
+                </section>
               )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

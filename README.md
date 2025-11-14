@@ -30,7 +30,7 @@ cd NFF-Auto-Report
 
 2. Start all services:
 ```bash
-docker-compose up -d
+docker-compose -f docker-compose.production.yml up -d
 ```
 
 3. Access the services:
@@ -49,27 +49,53 @@ NFF-Auto-Report/
 │   ├── nff-data-ingestion/ # Python Data Service
 │   └── nff-web-ui/         # Next.js Frontend
 ├── shared/            # Shared utilities and types
-├── docker-compose.yml # Docker orchestration
+├── docker-compose.production.yml # Docker orchestration (production)
+├── docker-compose.dev.yml # Docker orchestration (development)
 └── README.md          # This file
 ```
 
 ## 🛠️ Development
 
-### API Gateway
+### Development với Docker (Recommended)
+
+Sử dụng `docker-compose.dev.yml` cho development với hot reload:
+
+```bash
+# Start development environment
+docker-compose -f docker-compose.dev.yml up -d
+
+# View logs
+docker-compose -f docker-compose.dev.yml logs -f
+
+# Stop
+docker-compose -f docker-compose.dev.yml down
+```
+
+**Tính năng:**
+- ✅ Hot reload cho API Gateway
+- ✅ Volume mounts cho source code
+- ✅ Development environment variables
+- ✅ Faster startup
+
+Xem thêm: **[Dockerfile Optimization Guide](./docs/dockerfile-optimization.md)**
+
+### Development Local (không dùng Docker)
+
+#### API Gateway
 ```bash
 cd services/nff-api-gateway
 npm install
 npm run start:dev
 ```
 
-### Web UI
+#### Web UI
 ```bash
 cd services/nff-web-ui
 npm install
 npm run dev
 ```
 
-### Data Ingestion
+#### Data Ingestion
 ```bash
 cd services/nff-data-ingestion
 pip install -r requirements.txt
@@ -89,11 +115,26 @@ cd services/nff-web-ui && npm test
 
 ## 📦 Deployment
 
+### Production với Docker
+
 The application is containerized and can be deployed using Docker:
 
 ```bash
-docker-compose -f docker-compose.yml up -d
+# Build và start production environment
+docker-compose -f docker-compose.production.yml up -d
+
+# View logs
+docker-compose -f docker-compose.production.yml logs -f
+
+# Stop
+docker-compose -f docker-compose.production.yml down
 ```
+
+### Deploy to Production (Docker Hub & VPS)
+
+Xem hướng dẫn chi tiết về cách push Docker images lên Docker Hub và deploy trên VPS:
+- **[Hướng dẫn Docker Hub Deployment](./docs/docker-hub-deployment.md)** (Tiếng Việt)
+- **[Dockerfile Optimization Guide](./docs/dockerfile-optimization.md)** - Development vs Production
 
 ## 🤝 Contributing
 

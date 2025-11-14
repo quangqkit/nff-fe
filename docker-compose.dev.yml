@@ -1,0 +1,95 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nff-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - nff-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nff-data-ingestion:
+    build:
+      context: ./services/nff-data-ingestion
+      dockerfile: Dockerfile
+    container_name: nff-data-ingestion
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - FRED_API_KEY=${FRED_API_KEY}
+      - ENVIRONMENT=development
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./services/nff-data-ingestion/src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nff-network
+
+  nff-api-gateway:
+    build:
+      context: ./services/nff-api-gateway
+      dockerfile: Dockerfile.dev
+    container_name: nff-api-gateway
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-key}
+      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
+      - DATA_INGESTION_SERVICE_URL=${DATA_INGESTION_SERVICE_URL:-http://nff-data-ingestion:8000}
+      - LOBSTR_API_KEY=${LOBSTR_API_KEY}
+      - LOBSTR_BASE_URL=${LOBSTR_BASE_URL:-https://api.lobstr.io}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - BLOB_ACCESS=${BLOB_ACCESS:-public}
+      - BLOB_STORE_BASE_URL=${BLOB_STORE_BASE_URL}
+      - BLOB_STORE_ID=${BLOB_STORE_ID}
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./services/nff-api-gateway/src:/app/src
+      - ./services/nff-api-gateway/prisma:/app/prisma
+      - ./services/nff-api-gateway/package.json:/app/package.json
+      - ./services/nff-api-gateway/tsconfig.json:/app/tsconfig.json
+      - ./services/nff-api-gateway/tsconfig.build.json:/app/tsconfig.build.json
+      - ./services/nff-api-gateway/nest-cli.json:/app/nest-cli.json
+      - /app/node_modules
+      - ./logs:/app/logs
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nff-network
+
+volumes:
+  postgres-data:
+    driver: local
+
+networks:
+  nff-network:
+    driver: bridge

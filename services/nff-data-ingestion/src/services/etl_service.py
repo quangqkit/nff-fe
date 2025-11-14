@@ -116,25 +116,43 @@ class ETLService:
             failed = 0
             blocked = 0
             
-            for indicator in indicators:
+            total_indicators = len(indicators)
+            logger.info(f"[ETL JOB] Starting to process {total_indicators} indicators for job {job_id}")
+            
+            for idx, indicator in enumerate(indicators, 1):
+                indicator_id = indicator['id']
+                indicator_name = indicator.get('indicatorEN', 'Unknown')
+                etl_status = indicator.get('etlStatus', 'UNKNOWN')
+                
+                # Log progress every 50 indicators
+                if idx % 50 == 0 or idx == 1:
+                    logger.info(f"[ETL JOB] Progress: {idx}/{total_indicators} (Success: {successful}, Failed: {failed}, Blocked: {blocked})")
+                
                 try:
+                    logger.debug(f"[ETL JOB] Processing indicator {idx}/{total_indicators}: ID={indicator_id}, Name='{indicator_name}', CurrentStatus={etl_status}")
+                    
                     result = await self.fetch_indicator_data(
-                        indicator_id=indicator['id'],
+                        indicator_id=indicator_id,
                         force_refresh=metadata.get('force_refresh', False)
                     )
                     
                     if result['status'] == 'OK':
                         successful += 1
+                        logger.debug(f"[ETL JOB] ✓ Indicator {indicator_id} ({indicator_name}) - SUCCESS")
                     elif result['status'] == 'BLOCKED':
                         blocked += 1
+                        logger.debug(f"[ETL JOB] ⊗ Indicator {indicator_id} ({indicator_name}) - BLOCKED")
                     else:
                         failed += 1
+                        logger.warning(f"[ETL JOB] ✗ Indicator {indicator_id} ({indicator_name}) - FAILED: {result.get('error_message', 'Unknown error')}")
                         
                 except Exception as e:
-                    logger.error(f"Error processing indicator {indicator['id']}: {e}")
+                    logger.error(f"[ETL JOB] ✗ Error processing indicator {indicator_id} ({indicator_name}): {e}", exc_info=True)
                     failed += 1
                 
                 await asyncio.sleep(0.2)
+            
+            logger.info(f"[ETL JOB] Completed processing {total_indicators} indicators: Success={successful}, Failed={failed}, Blocked={blocked}")
             
             await self._update_job_status(
                 job_id=job_id,
@@ -301,7 +319,7 @@ class ETLService:
         category_name: str,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
-        importance_min: int = 1
+        importance_min: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Create job for fetching all indicators in a category
@@ -310,13 +328,27 @@ class ETLService:
             conn = psycopg2.connect(self.db_url)
             
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT im.id FROM "IndicatorMetadata" im
-                    INNER JOIN "ChartCategory" cc ON cc.id = im."categoryId"
-                    WHERE cc.name = %s 
-                    AND im."isActive" = true
-                    AND im.importance >= %s
-                """, (category_name, importance_min))
+                if importance_min is not None:
+                    query = """
+                        SELECT im.id FROM "IndicatorMetadata" im
+                        INNER JOIN "ChartCategory" cc ON cc.id = im."categoryId"
+                        WHERE cc.name = %s 
+                        AND im."isActive" = true
+                        AND im.importance >= %s
+                    """
+                    params = (category_name, importance_min)
+                    logger.info(f"[ETL JOB] Creating category job for '{category_name}' with importance_min={importance_min}")
+                else:
+                    query = """
+                        SELECT im.id FROM "IndicatorMetadata" im
+                        INNER JOIN "ChartCategory" cc ON cc.id = im."categoryId"
+                        WHERE cc.name = %s 
+                        AND im."isActive" = true
+                    """
+                    params = (category_name,)
+                    logger.info(f"[ETL JOB] Creating category job for '{category_name}' - fetching ALL indicators (no importance filter)")
+                
+                cur.execute(query, params)
                 
                 indicators = cur.fetchall()
                 indicator_ids = [ind['id'] for ind in indicators]
@@ -632,6 +664,16 @@ class ETLService:
                     query += " AND im.source = %s"
                     params.append(source)
                 
+                count_query = query.replace('SELECT im.*', 'SELECT COUNT(*) as total')
+                cur.execute(count_query, params)
+                total_before_filter = cur.fetchone()['total']
+                
+                # Get status breakdown before filter
+                status_query = query.replace('SELECT im.*', 'SELECT im."etlStatus", COUNT(*) as count')
+                status_query += ' GROUP BY im."etlStatus"'
+                cur.execute(status_query, params)
+                status_breakdown = {row['etlStatus']: row['count'] for row in cur.fetchall()}
+                
                 if not force_refresh:
                     # Only include indicators that need update
                     query += """ AND (
@@ -641,7 +683,21 @@ class ETLService:
                     )"""
                 
                 cur.execute(query, params)
-                return [dict(row) for row in cur.fetchall()]
+                indicators = [dict(row) for row in cur.fetchall()]
+                
+                # Get status breakdown after filter
+                status_after_query = query.replace('SELECT im.*', 'SELECT im."etlStatus", COUNT(*) as count')
+                status_after_query += ' GROUP BY im."etlStatus"'
+                cur.execute(status_after_query, params)
+                status_after_breakdown = {row['etlStatus']: row['count'] for row in cur.fetchall()}
+                
+                logger.info(f"[ETL QUERY] Total active indicators: {total_before_filter}")
+                logger.info(f"[ETL QUERY] Status breakdown BEFORE filter: {status_breakdown}")
+                logger.info(f"[ETL QUERY] After filter (UNKNOWN/ERROR or never fetched or >7 days old): {len(indicators)}")
+                logger.info(f"[ETL QUERY] Status breakdown AFTER filter: {status_after_breakdown}")
+                logger.info(f"[ETL QUERY] Filters - Category={category}, Source={source}, ForceRefresh={force_refresh}")
+                
+                return indicators
                 
         finally:
             if 'conn' in locals():

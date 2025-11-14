@@ -3,7 +3,7 @@ import { PrismaService } from './prisma.service';
 import { HtmlService } from './html.service';
 import { PdfService } from './pdf.service';
 import { IndicatorService } from './indicator.service';
-import { SupabaseStorageService } from './supabase-storage.service';
+import { VercelBlobStorageService } from './vercel-blob-storage.service';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 
@@ -38,7 +38,7 @@ export class ExportService {
     private readonly htmlService: HtmlService,
     private readonly pdfService: PdfService,
     private readonly indicatorService: IndicatorService,
-    private readonly supabaseStorage: SupabaseStorageService,
+    private readonly blobStorage: VercelBlobStorageService,
   ) {}
 
   private async ensureExportDirectories() {
@@ -223,22 +223,20 @@ export class ExportService {
 
       let downloadUrl: string;
       let storageKey: string | undefined;
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseKey =
-        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+      const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
 
-      if (supabaseUrl && supabaseKey) {
+      if (blobToken) {
         this.logger.log(
-          `[DEBUG] Attempting Supabase upload for export ${exportId}`,
+          `[DEBUG] Attempting Vercel Blob upload for export ${exportId}`,
         );
         try {
           const uploadResult =
             exportRecord.exportType === 'pdf'
-              ? await this.supabaseStorage.uploadPdfReport(
+              ? await this.blobStorage.uploadPdfReport(
                   filePath,
                   exportRecord.reportId.toString(),
                 )
-              : await this.supabaseStorage.uploadHtmlReport(
+              : await this.blobStorage.uploadHtmlReport(
                   filePath,
                   exportRecord.reportId.toString(),
                 );
@@ -247,7 +245,7 @@ export class ExportService {
           storageKey = uploadResult.key;
 
           this.logger.log(
-            `Export ${exportId} uploaded to Supabase: ${storageKey} -> ${downloadUrl}`,
+            `Export ${exportId} uploaded to Vercel Blob: ${storageKey} -> ${downloadUrl}`,
           );
 
           if (process.env.CLEANUP_LOCAL_FILES === 'true') {
@@ -256,7 +254,7 @@ export class ExportService {
           }
         } catch (storageError) {
           this.logger.error(
-            `[DEBUG] Supabase upload failed: ${storageError.message}`,
+            `[DEBUG] Vercel Blob upload failed: ${storageError.message}`,
             storageError.stack,
           );
           this.logger.warn(
@@ -266,7 +264,7 @@ export class ExportService {
         }
       } else {
         this.logger.log(
-          `[DEBUG] Supabase not configured - using local download URL`,
+          `[DEBUG] Vercel Blob not configured - using local download URL`,
         );
         downloadUrl = `/api/exports/download/${exportId}`;
       }
@@ -431,7 +429,7 @@ export class ExportService {
   private async generateChartDataForBlock(block: any): Promise<void> {
     this.logger.log(`Generating chart data for block ${block.id}`);
 
-    const content = block.content as any;
+    const content = block.content;
     let indicatorsToProcess: any[] = [];
 
     if (content?.indicatorConfigs?.length > 0) {

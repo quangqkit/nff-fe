@@ -15,7 +15,7 @@ from api.v1.routers import (
     bulk_operations,
 )
 from api.v1.routers.lobstr_processor import router as lobstr_processor_router
-from api.v1.routers.tweet_enrichment import router as tweet_enrichment_router
+from api.v1.routers.tweets import router as tweets_router
 
 app = FastAPI(
     title="NFF Data Ingestion Service",
@@ -37,9 +37,9 @@ app.include_router(health_router, prefix="/api/v1", tags=["Health"])
 app.include_router(cache_router, prefix="/api/v1", tags=["Cache"])
 app.include_router(indicators_router, prefix="/api/v1", tags=["Indicators"])
 app.include_router(etl_router, prefix="/api/v1", tags=["ETL"])
+app.include_router(tweets_router, prefix="/api/v1", tags=["Tweets"])
 app.include_router(bulk_operations.router, prefix="/api/v1", tags=["Bulk Operations"])
 app.include_router(lobstr_processor_router, prefix="/api/v1", tags=["Lobstr Processor"])
-app.include_router(tweet_enrichment_router, prefix="/api/v1", tags=["Tweet Enrichment"])
 
 if settings.SENTRY_DSN:
     init_sentry(settings.SENTRY_DSN)
@@ -63,6 +63,7 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "nff-data-ingestion"}
+
 
 def main(event, context):   
     try:

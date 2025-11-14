@@ -9,7 +9,7 @@ from .cache import router as cache_router
 
 __all__ = [
     "indicators_router",
-    "etl_router", 
+    "etl_router",
     "health_router",
     "cache_router",
 ]

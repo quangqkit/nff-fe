@@ -198,9 +198,7 @@ export class TradingViewService {
     return await this.getDataFromDb(dataType);
   }
 
-  async getSymbolsFromDb(
-    dataType: 'gainers' | 'losers',
-  ): Promise<string[]> {
+  async getSymbolsFromDb(dataType: 'gainers' | 'losers'): Promise<string[]> {
     const stocks = await this.prisma.tradingViewStock.findMany({
       where: {
         dataType: dataType,
