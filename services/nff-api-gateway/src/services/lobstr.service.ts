@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from './prisma.service';
-import { Prisma } from '@prisma/client';
 import {
   LobstrRunResponse,
   LobstrRunsListResponse,

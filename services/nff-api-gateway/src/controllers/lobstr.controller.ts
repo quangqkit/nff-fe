@@ -15,6 +15,7 @@ import { UpdateWindowScheduleStatusDto } from '../dto/update-window-schedule-sta
 import { TweetClassificationService } from '../services/tweet-classification.service';
 import { ClassifyTweetsDto } from '../dto/classify-tweets.dto';
 import { UpdateScheduleStatusDto } from 'src/dto/update-schedule-status.dto';
+import { SchedulerService } from '../services/scheduler.service';
 
 @Controller('lobstr')
 export class LobstrController {
@@ -22,6 +23,7 @@ export class LobstrController {
     private readonly lobstrService: LobstrService,
     private readonly windowScheduleService: WindowScheduleService,
     private readonly tweetClassificationService: TweetClassificationService,
+    private readonly schedulerService: SchedulerService,
   ) {}
 
   @Get('window-schedules')
@@ -107,5 +109,17 @@ export class LobstrController {
       tweetId,
       body.category,
     );
+  }
+
+  @Post('window-schedules/:windowTime/trigger')
+  async triggerWindowTime(@Param('windowTime') windowTime: string) {
+    const windowTimeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!windowTimeRegex.test(windowTime)) {
+      throw new BadRequestException(
+        `Invalid window time format. Expected format: HH:mm (e.g., 03:00)`,
+      );
+    }
+
+    return await this.schedulerService.triggerWindowTime(windowTime);
   }
 }

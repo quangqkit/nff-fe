@@ -103,6 +103,11 @@ export class SchedulerService {
     return this.executeScheduledTask(windowTime);
   }
 
+  async triggerWindowTime(windowTime: string) {
+    this.logger.log(`Manually triggering window time: ${windowTime}`);
+    return this.executeScheduledTask(windowTime);
+  }
+
   private async executeScheduledTask(scheduleTime: string) {
     try {
       const windowSchedule =

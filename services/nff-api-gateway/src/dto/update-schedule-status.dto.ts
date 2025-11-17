@@ -4,3 +4,4 @@ export class UpdateScheduleStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
+

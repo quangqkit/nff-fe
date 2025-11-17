@@ -23,7 +23,8 @@ async function bootstrap() {
     }),
   );
 
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api', { exclude: ['health', '/'] });
+
   app.enableCors({
     origin: ['http://localhost:3001', 'https://nff-auto-report.netlify.app'],
     credentials: true,
@@ -51,7 +52,7 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
+  SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: {
       persistAuthorization: true,
     },
