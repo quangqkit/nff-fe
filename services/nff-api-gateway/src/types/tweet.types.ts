@@ -13,3 +13,12 @@ export interface ClassifyTweetsResponse {
   count: number;
   items: TweetResponse[];
 }
+
+export interface GetTweetsResponse {
+  data: TweetResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+}

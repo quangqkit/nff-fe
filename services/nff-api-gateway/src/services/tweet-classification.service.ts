@@ -4,12 +4,19 @@ import {
   HttpException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 
 import { ClassifyTweetsDto } from '../dto/classify-tweets.dto';
-import { ClassifyTweetsResponse, TweetResponse } from '../types/tweet.types';
+import { UpdateTweetCategoriesDto } from '../dto/update-tweet-categories.dto';
+import { GetTweetsQueryDto } from '../dto/get-tweets-query.dto';
+import {
+  ClassifyTweetsResponse,
+  TweetResponse,
+  GetTweetsResponse,
+} from '../types/tweet.types';
 import { PrismaService } from './prisma.service';
 
 @Injectable()
@@ -161,5 +168,232 @@ export class TweetClassificationService {
       );
       throw new HttpException(detail, error?.response?.status ?? 500);
     }
+  }
+
+  async updateCategories(
+    tweetId: string,
+    dto: UpdateTweetCategoriesDto,
+  ): Promise<TweetResponse> {
+    const tweet = await this.prisma.tweet.findUnique({
+      where: { tweetId },
+    });
+
+    if (!tweet) {
+      throw new NotFoundException(`Tweet with tweetId ${tweetId} not found`);
+    }
+
+    if (!dto.categories && !dto.subCategories) {
+      throw new BadRequestException(
+        'At least one of categories or subCategories must be provided',
+      );
+    }
+
+    const updateData: {
+      categories?: string[];
+      subCategories?: any;
+      updatedAt: Date;
+    } = {
+      updatedAt: new Date(),
+    };
+
+    if (dto.categories !== undefined) {
+      updateData.categories = dto.categories;
+    }
+
+    if (dto.subCategories !== undefined) {
+      updateData.subCategories = dto.subCategories;
+    }
+
+    const updated = await this.prisma.tweet.update({
+      where: { tweetId },
+      data: updateData,
+    });
+
+    return {
+      id: updated.id,
+      tweetId: updated.tweetId,
+      categories: updated.categories,
+      subCategories: updated.subCategories as Record<string, string[]> | null,
+      tickers: updated.tickers,
+      sectors: updated.sectors,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    };
+  }
+
+  getCategoriesReference(): Record<string, string[]> {
+    return {
+      Company: [
+        'Earnings',
+        'Guidance',
+        'Analysts Rating',
+        'M&A',
+        'Capital Actions',
+        'Management & Board',
+        'Product / Technology',
+        'Partnership / Contracts',
+        'Legal / Compliance',
+        'Operations / KPIs',
+      ],
+      'Macro & Economy': [
+        'Central Banks',
+        'Inflation',
+        'Labor',
+        'Growth / Activity',
+        'Fiscal / Policy',
+        'Trade / Geopolitics',
+        'Housing',
+      ],
+      'Market Structure & Flows': [
+        'Options & Gamma',
+        'CTA / Systematic',
+        'ETF & Index',
+        'Short Interest',
+        'Dark Pools / Block Trades',
+        'Fund Flows',
+        'Insider Transactions',
+      ],
+      'Commodities, FX & Crypto': [
+        'Oil & Gas',
+        'Metals / Agriculture',
+        'FX / Rates',
+        'Crypto',
+      ],
+      'Technical & Market Dynamics': [
+        'Breakouts / Levels',
+        'Volatility',
+        'Breadth / Momentum',
+        'Seasonality / Patterns',
+      ],
+      'Data & Sentiment': ['Alt-Data', 'Surveys / Sentiment', 'Media / PR'],
+    };
+  }
+
+  async getTweets(dto: GetTweetsQueryDto): Promise<GetTweetsResponse> {
+    const page = dto.page || 1;
+    const pageSize = dto.pageSize || 50;
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {};
+
+    // Filter by categories
+    if (dto.categories && dto.categories.length > 0) {
+      where.categories = {
+        hasSome: dto.categories,
+      };
+    }
+
+    // Filter by date range
+    if (dto.startDate || dto.endDate) {
+      where.createdAt = {};
+      if (dto.startDate) {
+        where.createdAt.gte = new Date(dto.startDate);
+      }
+      if (dto.endDate) {
+        where.createdAt.lte = new Date(dto.endDate);
+      }
+    }
+
+    // Search in tickers or sectors
+    if (dto.search && dto.search.trim() !== '') {
+      const searchTerm = dto.search.trim();
+      where.OR = [
+        {
+          tickers: {
+            has: searchTerm,
+          },
+        },
+        {
+          sectors: {
+            has: searchTerm,
+          },
+        },
+      ];
+    }
+
+    // Optimized: If subCategories filter is used, we need to filter in memory
+    // Otherwise, use standard Prisma query with pagination at DB level
+    if (dto.subCategories && dto.subCategories.length > 0) {
+      // Fetch all matching tweets (with other filters applied)
+      const allTweets = await this.prisma.tweet.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      // Apply subCategories filter in memory
+      const filteredTweets = allTweets.filter((tweet) => {
+        if (!tweet.subCategories) return false;
+        const subCats = tweet.subCategories as Record<string, string[]>;
+        // Check if any of the requested sub-categories exists in any category
+        return dto.subCategories!.some((searchSubCat) => {
+          return Object.values(subCats).some((subCatArray) =>
+            subCatArray.includes(searchSubCat),
+          );
+        });
+      });
+
+      const total = filteredTweets.length;
+      const totalPages = Math.ceil(total / pageSize);
+
+      // Apply pagination
+      const paginatedTweets = filteredTweets.slice(skip, skip + pageSize);
+
+      const items: TweetResponse[] = paginatedTweets.map((tweet) => ({
+        id: tweet.id,
+        tweetId: tweet.tweetId,
+        categories: tweet.categories,
+        subCategories: tweet.subCategories as Record<string, string[]> | null,
+        tickers: tweet.tickers,
+        sectors: tweet.sectors,
+        createdAt: tweet.createdAt,
+        updatedAt: tweet.updatedAt,
+      }));
+
+      return {
+        data: items,
+        total,
+        page,
+        pageSize,
+        totalPages,
+        hasMore: page < totalPages,
+      };
+    }
+
+    // No subCategories filter - use standard Prisma query (optimized with DB-level pagination)
+    const [tweets, total] = await Promise.all([
+      this.prisma.tweet.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.tweet.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    const items: TweetResponse[] = tweets.map((tweet) => ({
+      id: tweet.id,
+      tweetId: tweet.tweetId,
+      categories: tweet.categories,
+      subCategories: tweet.subCategories as Record<string, string[]> | null,
+      tickers: tweet.tickers,
+      sectors: tweet.sectors,
+      createdAt: tweet.createdAt,
+      updatedAt: tweet.updatedAt,
+    }));
+
+    return {
+      data: items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      hasMore: page < totalPages,
+    };
   }
 }
