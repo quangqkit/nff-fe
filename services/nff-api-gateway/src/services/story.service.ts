@@ -35,7 +35,7 @@ export class StoryService {
       where: whereClause,
       select: {
         tweetId: true,
-        category: true,
+        categories: true,
         tickers: true,
         sectors: true,
       },
@@ -75,7 +75,10 @@ export class StoryService {
           }
           const group = tickerGroups.get(tickerKey)!;
           group.tweets.add(tweet.tweetId);
-          group.categories.add(tweet.category);
+          // Add all categories from tweet
+          if (tweet.categories && tweet.categories.length > 0) {
+            tweet.categories.forEach((cat) => group.categories.add(cat));
+          }
         }
         processedTweetIds.add(tweet.tweetId);
       } else if (hasSectors) {
@@ -91,7 +94,10 @@ export class StoryService {
           }
           const group = sectorGroups.get(sectorKey)!;
           group.tweets.add(tweet.tweetId);
-          group.categories.add(tweet.category);
+          // Add all categories from tweet
+          if (tweet.categories && tweet.categories.length > 0) {
+            tweet.categories.forEach((cat) => group.categories.add(cat));
+          }
         }
         processedTweetIds.add(tweet.tweetId);
       }
@@ -287,8 +293,9 @@ export class StoryService {
       }
     }
 
+    const tweetCategories = tweet.categories || [];
     const updatedCategories = Array.from(
-      new Set([...story.categories, tweet.category]),
+      new Set([...story.categories, ...tweetCategories]),
     );
     await this.prisma.story.update({
       where: { id: storyId },
@@ -335,9 +342,8 @@ export class StoryService {
             include: { tweet: true },
           });
 
-    const categories = Array.from(
-      new Set(items.map((item) => item.tweet.category)),
-    );
+    const allCategories = items.flatMap((item) => item.tweet.categories || []);
+    const categories = Array.from(new Set(allCategories));
 
     await this.prisma.story.update({
       where: { id: storyId },

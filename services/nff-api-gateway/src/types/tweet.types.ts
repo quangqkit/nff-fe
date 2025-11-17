@@ -1,15 +1,8 @@
-export type TweetCategory =
-  | 'Macro'
-  | 'Sector'
-  | 'Earnings'
-  | 'Analyst'
-  | 'Corporate'
-  | 'Options';
-
 export interface TweetResponse {
   id: number;
   tweetId: string;
-  category: TweetCategory;
+  categories: string[];
+  subCategories: Record<string, string[]> | null;
   tickers: string[];
   sectors: string[];
   createdAt: Date;

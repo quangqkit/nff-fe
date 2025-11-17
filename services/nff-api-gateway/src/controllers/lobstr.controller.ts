@@ -100,17 +100,6 @@ export class LobstrController {
     return await this.tweetClassificationService.classify(dto);
   }
 
-  @Patch('tweets/:tweetId/category')
-  async changeTweetCategory(
-    @Param('tweetId') tweetId: string,
-    @Body() body: { category: string },
-  ) {
-    return await this.tweetClassificationService.changeCategory(
-      tweetId,
-      body.category,
-    );
-  }
-
   @Post('window-schedules/:windowTime/trigger')
   async triggerWindowTime(@Param('windowTime') windowTime: string) {
     const windowTimeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;

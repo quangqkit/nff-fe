@@ -52,15 +52,22 @@ class TweetNormalizationService:
         pool = await self.get_pool()
         async with pool.acquire() as conn:
             if tweet_ids:
+                # Convert all tweet_ids to strings to ensure type matching
+                tweet_ids_str = [str(tid) for tid in tweet_ids]
                 records = await conn.fetch(
                     '''
                     SELECT "tweetId","text","createdAt","urls","symbols","runId","scheduleId"
                     FROM "TweetRaw"
-                    WHERE "tweetId" = ANY($1)
+                    WHERE "tweetId"::text = ANY($1::text[])
                     ORDER BY "createdAt" ASC
                     ''',
-                    tweet_ids,
+                    tweet_ids_str,
                 )
+                if len(records) == 0:
+                    logger.warning(
+                        "No records found in TweetRaw for tweet_ids: %s",
+                        tweet_ids_str[:3]
+                    )
             else:
                 if limit is None:
                     records = await conn.fetch(
@@ -92,10 +99,8 @@ class TweetNormalizationService:
                 normalized.append(item)
 
         logger.info(
-            "[NORMALIZE] Prepared %s tweet(s) for classification (run_id=%s, explicit_ids=%s)",
+            "Prepared %s tweet(s) for classification",
             len(normalized),
-            run_id,
-            bool(tweet_ids),
         )
         return normalized
 

@@ -3,25 +3,19 @@ import {
   BadRequestException,
   HttpException,
   Injectable,
-  InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 
 import { ClassifyTweetsDto } from '../dto/classify-tweets.dto';
-import {
-  ClassifyTweetsResponse,
-  TweetCategory,
-  TweetResponse,
-} from '../types/tweet.types';
+import { ClassifyTweetsResponse, TweetResponse } from '../types/tweet.types';
 import { PrismaService } from './prisma.service';
 
 @Injectable()
 export class TweetClassificationService {
   private readonly logger = new Logger(TweetClassificationService.name);
   private readonly dataIngestionServiceUrl: string;
-  private readonly categoryMap: Map<string, TweetCategory>;
 
   constructor(
     private readonly httpService: HttpService,
@@ -33,21 +27,6 @@ export class TweetClassificationService {
       this.configService.get<string>('PYTHON_SERVICE_URL') ||
       process.env.PYTHON_SERVICE_URL ||
       'http://localhost:8000';
-
-    this.categoryMap = new Map<string, TweetCategory>([
-      ['macro', 'Macro'],
-      ['sector', 'Sector'],
-      ['earnings', 'Earnings'],
-      ['analyst', 'Analyst'],
-      ['analyst rating', 'Analyst'],
-      ['corporate', 'Corporate'],
-      ['corporate/regulatory', 'Corporate'],
-      ['corporate_regulatory', 'Corporate'],
-      ['regulatory', 'Corporate'],
-      ['options', 'Options'],
-      ['flows', 'Options'],
-      ['flows/options', 'Options'],
-    ]);
   }
 
   async classify(dto: ClassifyTweetsDto): Promise<ClassifyTweetsResponse> {
@@ -113,7 +92,8 @@ export class TweetClassificationService {
       const tweets: TweetResponse[] = classified.map((item) => ({
         id: 0,
         tweetId: item.tweet_id,
-        category: this.normalizeCategory(item.category),
+        categories: item.categories || [],
+        subCategories: item.sub_categories || null,
         tickers: item.tickers || [],
         sectors: item.sectors || [],
         createdAt: new Date(),
@@ -181,39 +161,5 @@ export class TweetClassificationService {
       );
       throw new HttpException(detail, error?.response?.status ?? 500);
     }
-  }
-
-  async changeCategory(tweetId: string, category: string): Promise<void> {
-    const normalizedCategory = this.normalizeCategory(category);
-
-    const tweet = await this.prisma.tweet.findUnique({
-      where: { tweetId },
-    });
-
-    if (!tweet) {
-      throw new BadRequestException(`Tweet with id ${tweetId} not found`);
-    }
-
-    await this.prisma.tweet.update({
-      where: { tweetId },
-      data: {
-        category: normalizedCategory,
-        updatedAt: new Date(),
-      },
-    });
-  }
-
-  private normalizeCategory(raw: string): TweetCategory {
-    if (!raw) {
-      throw new InternalServerErrorException('Classifier omitted category');
-    }
-    const normalized = raw.trim().toLowerCase();
-    const mapped = this.categoryMap.get(normalized);
-    if (!mapped) {
-      throw new InternalServerErrorException(
-        `Classifier returned unsupported category: ${raw}`,
-      );
-    }
-    return mapped;
   }
 }

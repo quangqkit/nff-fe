@@ -393,7 +393,8 @@ model TweetRaw {
 model Tweet {
   id               Int               @id @default(autoincrement())
   tweetId          String            @unique
-  category         String
+  categories       String[]          @default([]) // Array of category names
+  subCategories    Json?             // Object with category -> sub_categories mapping
   tickers          String[]
   sectors          String[]
   createdAt        DateTime          @default(now())
@@ -401,7 +402,6 @@ model Tweet {
   storyTickerItems StoryTickerItem[]
   storySectorItems StorySectorItem[]
 
-  @@index([category])
   @@index([createdAt])
   @@index([updatedAt])
 }

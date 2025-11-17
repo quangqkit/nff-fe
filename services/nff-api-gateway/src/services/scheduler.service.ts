@@ -164,7 +164,11 @@ export class SchedulerService {
         `Scheduled task failed for window ${scheduleTime}: ${error.message}`,
         error.stack,
       );
-      throw new HttpException(error.message, error.status);
+      const status =
+        error instanceof HttpException
+          ? error.getStatus()
+          : error?.status || 500;
+      throw new HttpException(error.message, status);
     }
   }
 
@@ -178,7 +182,7 @@ export class SchedulerService {
   }
 
   private async waitForRunCompletion(runId: string): Promise<void> {
-    const maxWaitMs = Number(process.env.LOBSTR_RUN_TIMEOUT_MS || 120000);
+    const maxWaitMs = Number(process.env.LOBSTR_RUN_TIMEOUT_MS || 600000);
     const pollIntervalMs = Number(process.env.LOBSTR_RUN_POLL_MS || 5000);
     const deadline = Date.now() + maxWaitMs;
     let lastStatus: string | undefined;

@@ -30,9 +30,10 @@ class ClassifyTweetsRequest(BaseModel):
 
 class ClassifiedTweet(BaseModel):
     tweet_id: str = Field(alias="tweet_id")
-    category: str
-    tickers: List[str]
-    sectors: List[str]
+    categories: List[str] = Field(default_factory=list)
+    sub_categories: Dict[str, List[str]] = Field(default_factory=dict, alias="sub_categories")
+    tickers: List[str] = Field(default_factory=list)
+    sectors: List[str] = Field(default_factory=list)
 
     model_config = {
         "populate_by_name": True,
@@ -62,10 +63,10 @@ async def classify_tweets(request: ClassifyTweetsRequest) -> Dict[str, Any]:
             "items": results,
         }
     except RuntimeError as exc:
-        logger.error("[API] Classification aborted: %s", str(exc))
+        logger.error("Classification aborted: %s", str(exc))
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
-        logger.exception("[API] Failed to classify tweets: %s", str(exc))
+        logger.exception("Failed to classify tweets: %s", str(exc))
         raise HTTPException(status_code=500, detail="Failed to classify tweets")
     finally:
         await pipeline.close()
