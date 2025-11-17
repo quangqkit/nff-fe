@@ -22,14 +22,6 @@ type TabType =
   | "reports"
   | "polymerization";
 
-type TabType =
-  | "configuration"
-  | "raw-tweets"
-  | "enrichments"
-  | "market-movers"
-  | "reports"
-  | "polymerization";
-
 export default function IngestionPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
